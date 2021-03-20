@@ -1,6 +1,8 @@
 import asyncio
+import json
 import websockets
 import aioredis
+
 
 class WebSocketServer:
     def __init__(self, redis_host, redis_port):
@@ -18,10 +20,18 @@ class WebSocketServer:
         self.rc = await aioredis.create_redis_pool((self.redis_host, self.redis_port))
 
     async def message_consumer(self, ws, msg):
+        try:
+            data = json.loads(msg)
+            assert type(data) is list
+            for s in data:
+                assert isinstance(s, str)
+        except Exception:
+            return
+
         await ws.send('hello')
-        res = await self.rc.blpop('a', timeout=0)
-        data = str(res)
-        await ws.send(data)
+        # res = await self.rc.blpop('a', timeout=0)
+        # data = str(res)
+        # await ws.send(data)
 
     async def handle_connection(self, ws, path):
         async for msg in ws:
