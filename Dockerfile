@@ -12,10 +12,10 @@ RUN pip install -r requirements.txt
 
 # COPY uwsgi.ini .
 COPY ./funcx_ws/ ./funcx_ws/
-COPY web-entrypoint.sh .
+COPY run.py .
 
 USER uwsgi
 EXPOSE 6000
 
-CMD [ "python", "./funcx_ws/application.py" ]
+CMD [ "python", "./run.py" ]
 # CMD sh web-entrypoint.sh
