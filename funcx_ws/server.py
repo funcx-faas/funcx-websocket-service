@@ -37,6 +37,15 @@ class WebSocketServer:
         task_status = await self.rc.hget(task_hname, 'status')
         task_completion_t = await self.rc.hget(task_hname, 'completion_time')
 
+        if task_result:
+            task_result = task_result.decode('utf-8')
+        if task_exception:
+            task_exception = task_exception.decode('utf-8')
+        if task_status:
+            task_status = task_status.decode('utf-8')
+        if task_completion_t:
+            task_completion_t = task_completion_t.decode('utf-8')
+
         return {
             'task_id': task_id,
             'status': task_status,
@@ -48,17 +57,29 @@ class WebSocketServer:
     async def poll_tasks(self, ws, task_ids):
         remaining_task_ids = set(task_ids)
         for i in range(30):
+            to_remove = set()
             for task_id in remaining_task_ids:
                 poll_result = await self.poll_task(task_id)
                 if poll_result:
-                    remaining_task_ids.remove(task_id)
+                    to_remove.add(task_id)
                     await ws.send(json.dumps(poll_result))
+
+            remaining_task_ids = remaining_task_ids - to_remove
 
             if len(remaining_task_ids) == 0:
                 return
 
             # poll every 1s
             await asyncio.sleep(1)
+
+        # tasks that exist but never got a result/exception
+        for task_id in remaining_task_ids:
+            timeout_result = {
+                'task_id': task_id,
+                'status': 'Failed',
+                'reason': 'Task polling timeout'
+            }
+            await ws.send(json.dumps(timeout_result))
 
     async def message_consumer(self, ws, msg):
         try:
