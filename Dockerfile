@@ -12,7 +12,7 @@ RUN pip install -r requirements.txt
 
 # COPY uwsgi.ini .
 COPY ./funcx_ws/ ./funcx_ws/
-COPY run.py .
+COPY ./run.py .
 
 USER uwsgi
 EXPOSE 6000

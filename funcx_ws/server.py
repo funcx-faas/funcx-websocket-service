@@ -8,20 +8,20 @@ class WebSocketServer:
     def __init__(self, redis_host, redis_port):
         self.redis_host = redis_host
         self.redis_port = redis_port
-        self.rc = None
 
         start_server = websockets.serve(self.handle_connection, '0.0.0.0', 6000)
 
-        asyncio.get_event_loop().run_until_complete(self.init_redis_client())
         asyncio.get_event_loop().run_until_complete(start_server)
         asyncio.get_event_loop().run_forever()
 
-    async def init_redis_client(self):
-        self.rc = await aioredis.create_redis_pool((self.redis_host, self.redis_port))
+    async def get_redis_client(self):
+        redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
+        return redis_client
 
     async def poll_task(self, task_id):
+        rc = await self.get_redis_client()
         task_hname = f'task_{task_id}'
-        exists = await self.rc.exists(task_hname)
+        exists = await rc.exists(task_hname)
         if not exists:
             return {
                 'task_id': task_id,
@@ -29,13 +29,13 @@ class WebSocketServer:
                 'reason': 'Unknown task id'
             }
 
-        task_result = await self.rc.hget(task_hname, 'result')
-        task_exception = await self.rc.hget(task_hname, 'exception')
+        task_result = await rc.hget(task_hname, 'result')
+        task_exception = await rc.hget(task_hname, 'exception')
         if task_result is None and task_exception is None:
             return None
 
-        task_status = await self.rc.hget(task_hname, 'status')
-        task_completion_t = await self.rc.hget(task_hname, 'completion_time')
+        task_status = await rc.hget(task_hname, 'status')
+        task_completion_t = await rc.hget(task_hname, 'completion_time')
 
         if task_result:
             task_result = task_result.decode('utf-8')
@@ -46,13 +46,17 @@ class WebSocketServer:
         if task_completion_t:
             task_completion_t = task_completion_t.decode('utf-8')
 
-        return {
+        res = {
             'task_id': task_id,
             'status': task_status,
             'result': task_result,
             'completion_t': task_completion_t,
             'exception': task_exception
         }
+
+        rc.close()
+        await rc.wait_closed()
+        return res
 
     async def poll_tasks(self, ws, task_ids):
         remaining_task_ids = set(task_ids)
