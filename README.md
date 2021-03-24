@@ -33,6 +33,12 @@ ws:
   pullPolicy: Always
 ```
 
+You can also clone this repository and build the Docker image if you want:
+
+```
+docker build -t funcx_ws:latest .
+```
+
 You should also use the latest dev versions of funcx-web-service and funcx-forwarder. You should deploy as usual like:
 
 ```
@@ -46,7 +52,7 @@ export POD_NAME=$(kubectl get pods --namespace default -l "app=funcx-funcx-web-s
 export POD_NAME=$(kubectl get pods --namespace default -l "app=funcx-funcx-ws" -o jsonpath="{.items[0].metadata.name}") && kubectl port-forward $POD_NAME 6000:6000
 ```
 
-Now, deploy an endpoint, replace the endpoint UUID you received or chose with the one in the test script above, and run the test script.
+Now, set up an endpoint, replace the endpoint UUID you received or chose with the one in the test script above, and run the test script.
 
 ### How to set up and run the WebSocket server as a Python script without deploying it to a pod:
 
@@ -57,6 +63,6 @@ export POD_NAME=$(kubectl get pods --namespace default -l "app=funcx-funcx-web-s
 kubectl port-forward funcx-redis-master-0 6379:6379
 ```
 
-Clone this repository and run it with `python run.py`.
+Clone this repository and run it with `python run.py`
 
-Now, deploy an endpoint, replace the endpoint UUID you received or chose with the one in the test script above, and run the test script.
+Now, set up an endpoint, replace the endpoint UUID you received or chose with the one in the test script above, and run the test script.
