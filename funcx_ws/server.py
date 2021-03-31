@@ -108,7 +108,7 @@ class WebSocketServer:
     async def process_request(self, path, headers):
         try:
             token = headers['Authorization']
-        except Exception as e:
+        except Exception:
             return (401, [], b'You must be logged in to perform this function.\n')
         token = str.replace(str(token), 'Bearer ', '')
 
@@ -116,8 +116,8 @@ class WebSocketServer:
             client = self.get_auth_client()
             auth_detail = client.oauth2_token_introspect(token)
             user_name = auth_detail['username']
-        except Exception as e:
-            return (400, [], b'User not found\n')
+        except Exception:
+            return (400, [], b'Failed to authenticate user.\n')
 
         return None
 
