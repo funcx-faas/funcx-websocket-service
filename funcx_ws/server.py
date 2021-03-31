@@ -2,14 +2,17 @@ import asyncio
 import json
 import websockets
 import aioredis
+from globus_sdk import ConfidentialAppAuthClient
 
 
 class WebSocketServer:
-    def __init__(self, redis_host, redis_port):
+    def __init__(self, redis_host, redis_port, globus_client, globus_key):
         self.redis_host = redis_host
         self.redis_port = redis_port
+        self.globus_client = globus_client
+        self.globus_key = globus_key
 
-        start_server = websockets.serve(self.handle_connection, '0.0.0.0', 6000)
+        start_server = websockets.serve(self.handle_connection, '0.0.0.0', 6000, process_request=self.process_request)
 
         asyncio.get_event_loop().run_until_complete(start_server)
         asyncio.get_event_loop().run_forever()
@@ -98,5 +101,25 @@ class WebSocketServer:
         await self.poll_tasks(ws, task_ids)
 
     async def handle_connection(self, ws, path):
+        # headers = ws.request_headers
         async for msg in ws:
             await self.message_consumer(ws, msg)
+
+    async def process_request(self, path, headers):
+        try:
+            token = headers['Authorization']
+        except Exception as e:
+            return (401, [], b'You must be logged in to perform this function.\n')
+        token = str.replace(str(token), 'Bearer ', '')
+
+        try:
+            client = self.get_auth_client()
+            auth_detail = client.oauth2_token_introspect(token)
+            user_name = auth_detail['username']
+        except Exception as e:
+            return (400, [], b'User not found\n')
+
+        return None
+
+    def get_auth_client(self):
+        return ConfidentialAppAuthClient(self.globus_client, self.globus_key)
