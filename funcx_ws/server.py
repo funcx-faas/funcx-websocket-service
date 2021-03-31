@@ -1,8 +1,13 @@
 import asyncio
 import json
+import logging
 import websockets
+from websockets.exceptions import ConnectionClosedError
 import aioredis
 from globus_sdk import ConfidentialAppAuthClient
+
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketServer:
@@ -102,8 +107,13 @@ class WebSocketServer:
 
     async def handle_connection(self, ws, path):
         # headers = ws.request_headers
-        async for msg in ws:
-            await self.message_consumer(ws, msg)
+        try:
+            async for msg in ws:
+                await self.message_consumer(ws, msg)
+        # this will likely happen from the connected client not calling
+        # ws.close() to have a clean closing handshake
+        except ConnectionClosedError:
+            logger.debug('connection closed with errors')
 
     async def process_request(self, path, headers):
         try:
@@ -112,12 +122,15 @@ class WebSocketServer:
             return (401, [], b'You must be logged in to perform this function.\n')
         token = str.replace(str(token), 'Bearer ', '')
 
+        fail_response = (400, [], b'Failed to authenticate user.\n')
         try:
             client = self.get_auth_client()
             auth_detail = client.oauth2_token_introspect(token)
-            user_name = auth_detail['username']
+            # user_name = auth_detail['username']
+            if not auth_detail['active']:
+                return fail_response
         except Exception:
-            return (400, [], b'Failed to authenticate user.\n')
+            return fail_response
 
         return None
 
