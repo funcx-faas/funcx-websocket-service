@@ -4,18 +4,19 @@ import logging
 import websockets
 from websockets.exceptions import ConnectionClosedError
 import aioredis
-from globus_sdk import ConfidentialAppAuthClient
+from funcx_ws.auth import AuthClient
 
 
 logger = logging.getLogger(__name__)
 
 
 class WebSocketServer:
-    def __init__(self, redis_host, redis_port, globus_client, globus_key):
+    def __init__(self, redis_host, redis_port):
         self.redis_host = redis_host
         self.redis_port = redis_port
-        self.globus_client = globus_client
-        self.globus_key = globus_key
+        self.funcx_service_address = 'http://localhost:5000/v1'
+        # self.funcx_service_address = 'https://api.funcx.org/v1'
+        self.auth_client = AuthClient(self.funcx_service_address)
 
         start_server = websockets.serve(self.handle_connection, '0.0.0.0', 6000, process_request=self.process_request)
 
@@ -41,6 +42,8 @@ class WebSocketServer:
         task_exception = await rc.hget(task_hname, 'exception')
         if task_result is None and task_exception is None:
             return None
+
+        # TODO: delete task from redis
 
         task_status = await rc.hget(task_hname, 'status')
         task_completion_t = await rc.hget(task_hname, 'completion_time')
@@ -116,23 +119,4 @@ class WebSocketServer:
             logger.debug('connection closed with errors')
 
     async def process_request(self, path, headers):
-        try:
-            token = headers['Authorization']
-        except Exception:
-            return (401, [], b'You must be logged in to perform this function.\n')
-        token = str.replace(str(token), 'Bearer ', '')
-
-        fail_response = (400, [], b'Failed to authenticate user.\n')
-        try:
-            client = self.get_auth_client()
-            auth_detail = client.oauth2_token_introspect(token)
-            # user_name = auth_detail['username']
-            if not auth_detail['active']:
-                return fail_response
-        except Exception:
-            return fail_response
-
-        return None
-
-    def get_auth_client(self):
-        return ConfidentialAppAuthClient(self.globus_client, self.globus_key)
+        return await self.auth_client.authenticate(headers)
