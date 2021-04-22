@@ -24,9 +24,35 @@ fxc.loop.run_until_complete(task())
 
 First, check out and use the `funcx_ws_draft` branch of the helm-chart repo (https://github.com/funcx-faas/helm-chart/tree/funcx_ws_draft)
 
-This branch adds a `ws` deployment with a configuration that pulls from a Docker Hub image I created:
+This branch adds a `ws` deployment with a configuration that pulls from a Docker Hub image I created. The full config you will need is:
 
 ```yaml
+webService:
+  host: http://localhost:5000
+  globusClient: ...
+  globusKey: ...
+  image: loonride/funcx_web_service
+  tag: ws_tasks
+  pullPolicy: Always
+endpoint:
+  enabled: true
+funcx_endpoint:
+  image:
+    tag: exception
+forwarder:
+  enabled: true
+  image: loonride/funcx_forwarder
+  tag: ws_tasks
+  pullPolicy: Always
+redis:
+  master:
+    service:
+      nodePort: 30379
+      type: NodePort
+postgresql:
+  service:
+    nodePort: 30432
+    type: NodePort
 ws:
   image: loonride/funcx_ws
   tag: latest
@@ -56,11 +82,12 @@ Now, set up an endpoint, replace the endpoint UUID you received or chose with th
 
 ### How to set up and run the WebSocket server as a Python script without deploying it to a pod:
 
-First, deploy the normal helm-chart `main` branch with the latest dev versions of everything. Next, expose the web service port 5000 and redis port 6379:
+First, deploy the normal helm-chart `main` branch with the latest dev versions of everything. Next, expose the web service port 5000, redis port 6379, and RabbitMQ port 5672:
 
 ```
 export POD_NAME=$(kubectl get pods --namespace default -l "app=funcx-funcx-web-service" -o jsonpath="{.items[0].metadata.name}") && kubectl port-forward $POD_NAME 5000:5000
 kubectl port-forward funcx-redis-master-0 6379:6379
+kubectl port-forward funcx-rabbitmq-0 5672:5672
 ```
 
 Clone this repository and run it with `python run.py`

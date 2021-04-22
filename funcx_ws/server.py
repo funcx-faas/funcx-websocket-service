@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketServer:
-    def __init__(self, redis_host, redis_port):
+    def __init__(self, redis_host, redis_port, rabbitmq_host, web_service_host):
         self.redis_host = redis_host
         self.redis_port = redis_port
-        self.funcx_service_address = 'http://localhost:5000/v1'
+        self.rabbitmq_host = rabbitmq_host
+        self.funcx_service_address = f'http://{web_service_host}:5000/v1'
         # self.funcx_service_address = 'https://api.funcx.org/v1'
         self.auth_client = AuthClient(self.funcx_service_address)
 
@@ -28,9 +29,8 @@ class WebSocketServer:
         self.loop.run_forever()
 
     async def mq_connect(self):
-        self.mq_connection = await aio_pika.connect_robust(
-            "amqp://funcx:rabbitmq@127.0.0.1/", loop=self.loop
-        )
+        uri = f'amqp://funcx:rabbitmq@{self.rabbitmq_host}/'
+        self.mq_connection = await aio_pika.connect_robust(uri, loop=self.loop)
 
     async def get_redis_client(self):
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
