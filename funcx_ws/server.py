@@ -4,6 +4,7 @@ import logging
 import websockets
 from websockets.exceptions import ConnectionClosedError
 import aioredis
+import aio_pika
 from funcx_ws.auth import AuthClient
 
 
@@ -18,10 +19,18 @@ class WebSocketServer:
         # self.funcx_service_address = 'https://api.funcx.org/v1'
         self.auth_client = AuthClient(self.funcx_service_address)
 
+        self.loop = asyncio.get_event_loop()
+
         start_server = websockets.serve(self.handle_connection, '0.0.0.0', 6000, process_request=self.process_request)
 
-        asyncio.get_event_loop().run_until_complete(start_server)
-        asyncio.get_event_loop().run_forever()
+        self.loop.run_until_complete(self.mq_connect())
+        self.loop.run_until_complete(start_server)
+        self.loop.run_forever()
+
+    async def mq_connect(self):
+        self.mq_connection = await aio_pika.connect_robust(
+            "amqp://funcx:rabbitmq@127.0.0.1/", loop=self.loop
+        )
 
     async def get_redis_client(self):
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
@@ -96,6 +105,24 @@ class WebSocketServer:
             }
             await ws.send(json.dumps(timeout_result))
 
+    async def mq_receive(self, ws, topic_id):
+        async with self.mq_connection:
+            queue_name = topic_id
+
+            channel = await self.mq_connection.channel()
+            queue = await channel.declare_queue(
+                queue_name
+            )
+
+            async with queue.iterator() as queue_iter:
+                async for message in queue_iter:
+                    async with message.process():
+                        task_id = message.body.decode('utf-8')
+                        print(task_id)
+                        poll_result = await self.poll_task(task_id)
+                        if poll_result:
+                            await ws.send(json.dumps(poll_result))
+
     async def message_consumer(self, ws, msg):
         try:
             data = json.loads(msg)
@@ -105,8 +132,9 @@ class WebSocketServer:
         except Exception:
             return
 
-        task_ids = data
-        await self.poll_tasks(ws, task_ids)
+        await self.mq_receive(ws, data[0])
+        # task_ids = data
+        # await self.poll_tasks(ws, task_ids)
 
     async def handle_connection(self, ws, path):
         # headers = ws.request_headers
