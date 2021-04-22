@@ -105,34 +105,31 @@ class WebSocketServer:
             }
             await ws.send(json.dumps(timeout_result))
 
-    async def mq_receive(self, ws, topic_id):
+    async def mq_receive(self, ws, batch_id):
         async with self.mq_connection:
-            queue_name = topic_id
-
             channel = await self.mq_connection.channel()
-            queue = await channel.declare_queue(
-                queue_name
-            )
+            exchange = await channel.declare_exchange('tasks', aio_pika.ExchangeType.DIRECT)
+            queue = await channel.declare_queue(batch_id)
+            await queue.bind(exchange, routing_key=batch_id)
 
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
                     async with message.process():
                         task_id = message.body.decode('utf-8')
-                        print(task_id)
                         poll_result = await self.poll_task(task_id)
                         if poll_result:
                             await ws.send(json.dumps(poll_result))
 
     async def message_consumer(self, ws, msg):
-        try:
-            data = json.loads(msg)
-            assert type(data) is list
-            for s in data:
-                assert isinstance(s, str)
-        except Exception:
-            return
+        await self.mq_receive(ws, msg)
+        # try:
+        #     data = json.loads(msg)
+        #     assert type(data) is list
+        #     for s in data:
+        #         assert isinstance(s, str)
+        # except Exception:
+        #     return
 
-        await self.mq_receive(ws, data[0])
         # task_ids = data
         # await self.poll_tasks(ws, task_ids)
 
