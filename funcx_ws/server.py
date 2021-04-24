@@ -103,6 +103,11 @@ class WebSocketServer:
     async def mq_receive(self, ws, batch_id):
         # TODO: confirm with the web service that this user can access this batch_id
 
+        headers = ws.request_headers
+        batch_info = await self.auth_client.authorize_batch(headers, batch_id)
+        if not batch_info:
+            return
+
         uri = f'amqp://funcx:rabbitmq@{self.rabbitmq_host}/'
         mq_connection = await aio_pika.connect_robust(uri, loop=self.loop)
 
@@ -112,6 +117,8 @@ class WebSocketServer:
             queue = await channel.declare_queue(batch_id)
             await queue.bind(exchange, routing_key=batch_id)
 
+            result_count = 0
+
             # TODO: close everything when the batch runs out
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
@@ -120,6 +127,10 @@ class WebSocketServer:
                         poll_result = await self.poll_task(task_id)
                         if poll_result:
                             await ws.send(json.dumps(poll_result))
+                            result_count += 1
+                            if result_count == batch_info['task_count']:
+                                break
+            await queue.delete()
 
     async def message_consumer(self, ws, msg):
         await self.mq_receive(ws, msg)

@@ -7,6 +7,8 @@ logger = logging.getLogger(__name__)
 class AuthClient:
     def __init__(self, funcx_service_address):
         self.funcx_service_address = funcx_service_address
+        timeout = aiohttp.ClientTimeout(total=10)
+        self.session = aiohttp.ClientSession(timeout=timeout)
 
     async def authenticate(self, headers):
         try:
@@ -15,28 +17,23 @@ class AuthClient:
             return (401, [], b'You must be logged in to perform this function.\n')
         req_headers = {'Authorization': auth_header}
 
-        r = await self.get('/authenticate', req_headers)
-        if r.status != 200:
-            return (400, [], b'Failed to authenticate user.\n')
+        async with self.session.get(self.full_path('/authenticate'), headers=req_headers) as r:
+            if r.status != 200:
+                return (400, [], b'Failed to authenticate user.\n')
 
         return None
 
-    async def authorize_task(self, headers, task_id):
+    async def authorize_batch(self, headers, batch_id):
         try:
             auth_header = headers['Authorization']
         except Exception:
-            return False
+            return None
         req_headers = {'Authorization': auth_header}
 
-        r = await self.get(f'/authorize_task/{task_id}', req_headers)
-        if r.status != 200:
-            return False
+        async with self.session.get(self.full_path(f'/batches/{batch_id}'), headers=req_headers) as r:
+            if r.status != 200:
+                return None
+            return await r.json()
 
-        return True
-
-    async def get(self, path, headers):
-        full_path = f'{self.funcx_service_address}{path}'
-        timeout = aiohttp.ClientTimeout(total=10)
-        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
-            async with session.get(full_path) as r:
-                return r
+    def full_path(self, path):
+        return f'{self.funcx_service_address}{path}'
