@@ -24,13 +24,8 @@ class WebSocketServer:
 
         start_server = websockets.serve(self.handle_connection, '0.0.0.0', 6000, process_request=self.process_request)
 
-        self.loop.run_until_complete(self.mq_connect())
         self.loop.run_until_complete(start_server)
         self.loop.run_forever()
-
-    async def mq_connect(self):
-        uri = f'amqp://funcx:rabbitmq@{self.rabbitmq_host}/'
-        self.mq_connection = await aio_pika.connect_robust(uri, loop=self.loop)
 
     async def get_redis_client(self):
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
@@ -106,12 +101,18 @@ class WebSocketServer:
             await ws.send(json.dumps(timeout_result))
 
     async def mq_receive(self, ws, batch_id):
-        async with self.mq_connection:
-            channel = await self.mq_connection.channel()
+        # TODO: confirm with the web service that this user can access this batch_id
+
+        uri = f'amqp://funcx:rabbitmq@{self.rabbitmq_host}/'
+        mq_connection = await aio_pika.connect_robust(uri, loop=self.loop)
+
+        async with mq_connection:
+            channel = await mq_connection.channel()
             exchange = await channel.declare_exchange('tasks', aio_pika.ExchangeType.DIRECT)
             queue = await channel.declare_queue(batch_id)
             await queue.bind(exchange, routing_key=batch_id)
 
+            # TODO: close everything when the batch runs out
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
                     async with message.process():

@@ -36,6 +36,7 @@ class AuthClient:
 
     async def get(self, path, headers):
         full_path = f'{self.funcx_service_address}{path}'
-        async with aiohttp.ClientSession(headers=headers) as session:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
             async with session.get(full_path) as r:
                 return r
