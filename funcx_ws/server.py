@@ -32,6 +32,9 @@ class WebSocketServer:
         return redis_client
 
     async def poll_task(self, task_id):
+        """
+        Gets task info from redis
+        """
         rc = await self.get_redis_client()
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
@@ -74,6 +77,10 @@ class WebSocketServer:
         return res
 
     async def mq_receive(self, ws, batch_id):
+        """
+        Receives completed batch tasks on a RabbitMQ queue and sends them back
+        to the user, assuming they own the batch they have requested
+        """
         # confirm with the web service that this user can access this batch_id
         headers = ws.request_headers
         batch_info = await self.auth_client.authorize_batch(headers, batch_id)
