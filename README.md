@@ -1,6 +1,6 @@
 ### FuncX SDK and test script
 
-You will need to use the `ws_async_interface` branch of the SDK (https://github.com/funcx-faas/funcX/tree/ws_async_interface)
+You will need to use the `ws_async_interface_auth` branch of the SDK (https://github.com/funcx-faas/funcX/tree/ws_async_interface_auth)
 
 Here is the test script, which should just log 'Hello World!':
 
@@ -93,3 +93,27 @@ kubectl port-forward funcx-rabbitmq-0 5672:5672
 Clone this repository and run it with `python run.py`
 
 Now, set up an endpoint, replace the endpoint UUID you received or chose with the one in the test script above, and run the test script.
+
+### Batch example:
+
+```python
+from funcx.sdk.client import FuncXClient
+fxc = FuncXClient(funcx_service_address='http://localhost:5000/api/v1', asynchronous=True)
+
+def squared(x):
+    return x**2
+
+async def task():
+    endpoint = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    squared_function = fxc.register_function(squared)
+    inputs = list(range(10))
+    batch = fxc.create_batch()
+    for x in inputs:
+        batch.add(x, endpoint_id=endpoint, function_id=squared_function)
+    batch_res = fxc.batch_run(batch)
+
+    for f in batch_res:
+        print(await f)
+
+fxc.loop.run_until_complete(task())
+```

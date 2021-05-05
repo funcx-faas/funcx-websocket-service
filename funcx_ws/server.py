@@ -73,36 +73,8 @@ class WebSocketServer:
         await rc.wait_closed()
         return res
 
-    async def poll_tasks(self, ws, task_ids):
-        remaining_task_ids = set(task_ids)
-        for i in range(30):
-            to_remove = set()
-            for task_id in remaining_task_ids:
-                poll_result = await self.poll_task(task_id)
-                if poll_result:
-                    to_remove.add(task_id)
-                    await ws.send(json.dumps(poll_result))
-
-            remaining_task_ids = remaining_task_ids - to_remove
-
-            if len(remaining_task_ids) == 0:
-                return
-
-            # poll every 1s
-            await asyncio.sleep(1)
-
-        # tasks that exist but never got a result/exception
-        for task_id in remaining_task_ids:
-            timeout_result = {
-                'task_id': task_id,
-                'status': 'Failed',
-                'reason': 'Task polling timeout'
-            }
-            await ws.send(json.dumps(timeout_result))
-
     async def mq_receive(self, ws, batch_id):
-        # TODO: confirm with the web service that this user can access this batch_id
-
+        # confirm with the web service that this user can access this batch_id
         headers = ws.request_headers
         batch_info = await self.auth_client.authorize_batch(headers, batch_id)
         if not batch_info:
@@ -119,7 +91,8 @@ class WebSocketServer:
 
             result_count = 0
 
-            # TODO: close everything when the batch runs out
+            # close everything when the batch runs out of tasks
+            # TODO: delete tasks and batches from redis when they are no longer needed
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
                     async with message.process():
@@ -134,19 +107,8 @@ class WebSocketServer:
 
     async def message_consumer(self, ws, msg):
         await self.mq_receive(ws, msg)
-        # try:
-        #     data = json.loads(msg)
-        #     assert type(data) is list
-        #     for s in data:
-        #         assert isinstance(s, str)
-        # except Exception:
-        #     return
-
-        # task_ids = data
-        # await self.poll_tasks(ws, task_ids)
 
     async def handle_connection(self, ws, path):
-        # headers = ws.request_headers
         try:
             async for msg in ws:
                 await self.message_consumer(ws, msg)
