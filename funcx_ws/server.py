@@ -14,6 +14,12 @@ handler = logging.StreamHandler()
 logger.addHandler(handler)
 
 
+async def process_message(message: aio_pika.IncomingMessage):
+    async with message.process():
+        print(message.body)
+        await asyncio.sleep(1)
+
+
 class WebSocketServer:
     def __init__(self, redis_host, redis_port, rabbitmq_host, web_service_host):
         self.redis_host = redis_host
@@ -114,7 +120,7 @@ class WebSocketServer:
             # TODO: delete tasks from redis when they are no longer needed
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
-                    async with message.process():
+                    async with message.process(requeue=True):
                         task_id = message.body.decode('utf-8')
                         logger.debug(f'Got Task ID: {task_id}')
                         poll_result = await self.poll_task(task_id)
