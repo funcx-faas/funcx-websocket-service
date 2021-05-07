@@ -14,12 +14,6 @@ handler = logging.StreamHandler()
 logger.addHandler(handler)
 
 
-async def process_message(message: aio_pika.IncomingMessage):
-    async with message.process():
-        print(message.body)
-        await asyncio.sleep(1)
-
-
 class WebSocketServer:
     def __init__(self, redis_host, redis_port, rabbitmq_host, web_service_host):
         self.redis_host = redis_host
