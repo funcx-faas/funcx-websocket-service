@@ -1,5 +1,11 @@
 import os
+import logging
 from funcx_ws.server import WebSocketServer
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+logger.addHandler(handler)
 
 
 def run():
@@ -19,5 +25,8 @@ def run():
 
     if WEB_SERVICE_HOST is None:
         WEB_SERVICE_HOST = '127.0.0.1'
+
+    logger.info('Starting WebSocket Server')
+    logger.debug(f'Using redis host: {REDIS_HOST}, redis port: {REDIS_PORT}, RabbitMQ host: {RABBITMQ_HOST}, web service host: {WEB_SERVICE_HOST}')
 
     WebSocketServer(REDIS_HOST, REDIS_PORT, RABBITMQ_HOST, WEB_SERVICE_HOST)

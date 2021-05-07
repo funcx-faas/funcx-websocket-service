@@ -9,6 +9,9 @@ from funcx_ws.auth import AuthClient
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+logger.addHandler(handler)
 
 
 class WebSocketServer:
@@ -22,10 +25,16 @@ class WebSocketServer:
 
         self.loop = asyncio.get_event_loop()
 
-        start_server = websockets.serve(self.handle_connection, '0.0.0.0', 6000, process_request=self.process_request)
+        self.ws_port = 6000
+
+        start_server = websockets.serve(self.handle_connection, '0.0.0.0', self.ws_port, process_request=self.process_request)
 
         self.loop.run_until_complete(start_server)
+        self.loop.run_until_complete(self.on_server_started())
         self.loop.run_forever()
+
+    async def on_server_started(self):
+        logger.info(f'WebSocket Server started on port {self.ws_port}')
 
     async def get_redis_client(self):
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
@@ -76,6 +85,12 @@ class WebSocketServer:
         await rc.wait_closed()
         return res
 
+    async def mq_receive_task(self, ws, batch_id):
+        try:
+            await self.mq_receive(ws, batch_id)
+        except Exception as e:
+            logger.exception(e)
+
     async def mq_receive(self, ws, batch_id):
         """
         Receives completed batch tasks on a RabbitMQ queue and sends them back
@@ -96,33 +111,37 @@ class WebSocketServer:
             queue = await channel.declare_queue(batch_id)
             await queue.bind(exchange, routing_key=batch_id)
 
-            result_count = 0
-
-            # close everything when the batch runs out of tasks
-            # TODO: delete tasks and batches from redis when they are no longer needed
+            # TODO: delete tasks from redis when they are no longer needed
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
                     async with message.process():
                         task_id = message.body.decode('utf-8')
+                        logger.debug(f'Got Task ID: {task_id}')
                         poll_result = await self.poll_task(task_id)
                         if poll_result:
                             await ws.send(json.dumps(poll_result))
-                            result_count += 1
-                            if result_count == batch_info['task_count']:
-                                break
-            await queue.delete()
 
-    async def message_consumer(self, ws, msg):
-        await self.mq_receive(ws, msg)
+    def ws_message_consumer(self, ws, msg):
+        return self.loop.create_task(self.mq_receive_task(ws, msg))
 
     async def handle_connection(self, ws, path):
+        logger.info(f'New WebSocket connection created')
+        message_consumer_tasks = []
         try:
             async for msg in ws:
-                await self.message_consumer(ws, msg)
+                message_consumer_tasks.append(self.ws_message_consumer(ws, msg))
         # this will likely happen from the connected client not calling
         # ws.close() to have a clean closing handshake
-        except ConnectionClosedError:
-            logger.debug('connection closed with errors')
+        # except ConnectionClosedError:
+        #     logger.debug('connection closed with errors')
+        except Exception as e:
+            # logger.exception(e)
+            logger.debug(f'Connection closed with exception: {e}')
+
+        logger.debug('WebSocket connection closed')
+        for task in message_consumer_tasks:
+            logger.debug(f'Cancelling message consumer {task}')
+            task.cancel()
 
     async def process_request(self, path, headers):
         return await self.auth_client.authenticate(headers)
