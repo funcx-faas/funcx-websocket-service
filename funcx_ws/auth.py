@@ -23,14 +23,14 @@ class AuthClient:
 
         return None
 
-    async def authorize_batch(self, headers, batch_id):
+    async def authorize_task_group(self, headers, task_group_id):
         try:
             auth_header = headers['Authorization']
         except Exception:
             return None
         req_headers = {'Authorization': auth_header}
 
-        async with self.session.get(self.full_path(f'/batches/{batch_id}'), headers=req_headers) as r:
+        async with self.session.get(self.full_path(f'/task_groups/{task_group_id}'), headers=req_headers) as r:
             if r.status != 200:
                 return None
             return await r.json()

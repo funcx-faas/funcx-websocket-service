@@ -83,21 +83,21 @@ class WebSocketServer:
         await rc.wait_closed()
         return res
 
-    async def mq_receive_task(self, ws, batch_id):
+    async def mq_receive_task(self, ws, task_group_id):
         try:
-            await self.mq_receive(ws, batch_id)
+            await self.mq_receive(ws, task_group_id)
         except Exception as e:
             logger.exception(e)
 
-    async def mq_receive(self, ws, batch_id):
+    async def mq_receive(self, ws, task_group_id):
         """
-        Receives completed batch tasks on a RabbitMQ queue and sends them back
-        to the user, assuming they own the batch they have requested
+        Receives completed tasks based on task_group_id on a RabbitMQ queue and sends them back
+        to the user, assuming they own the task group they have requested
         """
-        # confirm with the web service that this user can access this batch_id
+        # confirm with the web service that this user can access this task_group_id
         headers = ws.request_headers
-        batch_info = await self.auth_client.authorize_batch(headers, batch_id)
-        if not batch_info:
+        task_group_info = await self.auth_client.authorize_task_group(headers, task_group_id)
+        if not task_group_info:
             return
 
         uri = f'amqp://funcx:rabbitmq@{self.rabbitmq_host}/'
@@ -106,8 +106,8 @@ class WebSocketServer:
         async with mq_connection:
             channel = await mq_connection.channel()
             exchange = await channel.declare_exchange('tasks', aio_pika.ExchangeType.DIRECT)
-            queue = await channel.declare_queue(batch_id)
-            await queue.bind(exchange, routing_key=batch_id)
+            queue = await channel.declare_queue(task_group_id)
+            await queue.bind(exchange, routing_key=task_group_id)
 
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
