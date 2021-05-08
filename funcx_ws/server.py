@@ -2,11 +2,9 @@ import asyncio
 import json
 import logging
 import websockets
-from websockets.exceptions import ConnectionClosedError
 import aioredis
 import aio_pika
 from funcx_ws.auth import AuthClient
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -111,7 +109,6 @@ class WebSocketServer:
             queue = await channel.declare_queue(batch_id)
             await queue.bind(exchange, routing_key=batch_id)
 
-            # TODO: delete tasks from redis when they are no longer needed
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
                     async with message.process(requeue=True):
@@ -132,10 +129,7 @@ class WebSocketServer:
                 message_consumer_tasks.append(self.ws_message_consumer(ws, msg))
         # this will likely happen from the connected client not calling
         # ws.close() to have a clean closing handshake
-        # except ConnectionClosedError:
-        #     logger.debug('connection closed with errors')
         except Exception as e:
-            # logger.exception(e)
             logger.debug(f'Connection closed with exception: {e}')
 
         logger.debug('WebSocket connection closed')
