@@ -13,11 +13,11 @@ logger.addHandler(handler)
 
 
 class WebSocketServer:
-    def __init__(self, redis_host, redis_port, rabbitmq_host, web_service_host):
+    def __init__(self, redis_host, redis_port, rabbitmq_host, web_service_uri):
         self.redis_host = redis_host
         self.redis_port = redis_port
         self.rabbitmq_host = rabbitmq_host
-        self.funcx_service_address = f'http://{web_service_host}:5000/v1'
+        self.funcx_service_address = f'{web_service_uri}/v2'
         # self.funcx_service_address = 'https://api.funcx.org/v1'
         self.auth_client = AuthClient(self.funcx_service_address)
 
@@ -64,6 +64,7 @@ class WebSocketServer:
 
         if task_result:
             task_result = task_result.decode('utf-8')
+            # logger.debug(f'Task {task_id} Result: {task_result}')
         if task_exception:
             task_exception = task_exception.decode('utf-8')
         if task_status:
