@@ -10,6 +10,8 @@ logger.addHandler(handler)
 
 def run():
     REDIS_HOST = os.environ.get('REDIS_HOST')
+    if not REDIS_HOST:
+        REDIS_HOST = os.environ.get('FUNCX_REDIS_MASTER_SERVICE_HOST')
     REDIS_PORT = os.environ.get('REDIS_PORT')
     RABBITMQ_HOST = os.environ.get('RABBITMQ_HOST')
     if not RABBITMQ_HOST:
