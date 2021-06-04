@@ -4,6 +4,7 @@ import logging
 import websockets
 import aioredis
 import aio_pika
+import http
 from funcx_ws.auth import AuthClient
 from funcx.serialize import FuncXSerializer
 
@@ -19,6 +20,7 @@ class WebSocketServer:
         self.redis_port = redis_port
         self.rabbitmq_host = rabbitmq_host
         self.funcx_service_address = f'{web_service_uri}/v2'
+        logger.info(f"funcx_service_address : {self.funcx_service_address}")
         # self.funcx_service_address = 'https://api.funcx.org/v1'
         self.auth_client = AuthClient(self.funcx_service_address)
 
@@ -148,4 +150,6 @@ class WebSocketServer:
             task.cancel()
 
     async def process_request(self, path, headers):
+        if path == '/v2/health':
+            return http.HTTPStatus.OK, [], b"OK\n"
         return await self.auth_client.authenticate(headers)
