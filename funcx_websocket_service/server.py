@@ -5,7 +5,7 @@ import websockets
 import aioredis
 import aio_pika
 import http
-from funcx_ws.auth import AuthClient
+from funcx_websocket_service.auth import AuthClient
 from funcx.serialize import FuncXSerializer
 
 logger = logging.getLogger(__name__)

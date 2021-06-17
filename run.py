@@ -1,3 +1,3 @@
-from funcx_ws.application import run
+from funcx_websocket_service.application import run
 
 run()

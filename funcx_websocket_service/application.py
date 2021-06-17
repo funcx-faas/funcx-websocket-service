@@ -1,6 +1,6 @@
 import os
 import logging
-from funcx_ws.server import WebSocketServer
+from funcx_websocket_service.server import WebSocketServer
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
