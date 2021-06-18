@@ -8,7 +8,6 @@ import http
 from concurrent.futures import CancelledError
 from websockets.exceptions import ConnectionClosedOK
 from funcx_websocket_service.auth import AuthClient
-from funcx.serialize import FuncXSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +20,6 @@ class WebSocketServer:
         self.funcx_service_address = f'{web_service_uri}/v2'
         logger.info(f"funcx_service_address : {self.funcx_service_address}")
         self.auth_client = AuthClient(self.funcx_service_address)
-
-        self.fx_serializer = FuncXSerializer(use_offprocess_checker=True)
 
         self.loop = asyncio.get_event_loop()
 
@@ -67,13 +64,6 @@ class WebSocketServer:
 
         if task_result:
             task_result = task_result.decode('utf-8')
-            try:
-                # TODO: this is for debugging which tasks we get back and this should
-                # not be kept around
-                deserialized_result = self.fx_serializer.deserialize(task_result)
-                logger.debug(f'Task {task_id} Result: {deserialized_result}')
-            except Exception:
-                pass
         if task_exception:
             task_exception = task_exception.decode('utf-8')
         if task_status:
