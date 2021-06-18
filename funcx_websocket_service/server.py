@@ -164,7 +164,7 @@ class WebSocketServer:
         except Exception as e:
             logger.debug(f'Connection closed with exception: {e}')
 
-        logger.debug('WebSocket connection closed, cancelling message consumers')
+        logger.info('WebSocket connection closed, cancelling message consumers')
         for task in message_consumer_tasks:
             task.cancel()
 
