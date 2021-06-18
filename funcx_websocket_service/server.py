@@ -5,6 +5,8 @@ import websockets
 import aioredis
 import aio_pika
 import http
+from concurrent.futures import CancelledError
+from websockets.exceptions import ConnectionClosedOK
 from funcx_websocket_service.auth import AuthClient
 from funcx.serialize import FuncXSerializer
 
@@ -94,6 +96,10 @@ class WebSocketServer:
     async def mq_receive_task(self, ws, task_group_id):
         try:
             await self.mq_receive(ws, task_group_id)
+        except CancelledError:
+            logger.debug(f'Message consumer {task_group_id} stopped due to cancellation')
+        except ConnectionClosedOK:
+            logger.debug(f'Message consumer {task_group_id} stopped due to WebSocket connection close')
         except Exception as e:
             logger.exception(e)
 
@@ -108,6 +114,8 @@ class WebSocketServer:
         if not task_group_info:
             return
 
+        logger.debug(f'Message consumer {task_group_id} started')
+
         uri = f'amqp://funcx:rabbitmq@{self.rabbitmq_host}/'
         mq_connection = await aio_pika.connect_robust(uri, loop=self.loop)
 
@@ -118,19 +126,35 @@ class WebSocketServer:
             await queue.bind(exchange, routing_key=task_group_id)
 
             async with queue.iterator() as queue_iter:
+                # If the asyncio task is cancelled when no previous queue message is being processed,
+                # a CancelledError will occur here allowing a clean exit from the asyncio task
                 async for message in queue_iter:
+                    # Setting requeue to True indicates that if an exception occurs within this
+                    # context manager, the message should be requeued. This is useful because it
+                    # allows requeueing of RabbitMQ messages that are not successfully sent over
+                    # the WebSocket connection. Usually this is because this async message handler
+                    # task has been cancelled externally, due to the WebSocket connection being
+                    # closed.
                     async with message.process(requeue=True):
                         task_id = message.body.decode('utf-8')
-                        logger.debug(f'Got Task ID: {task_id}')
-                        poll_result = await self.poll_task(task_id)
-                        if poll_result:
-                            await ws.send(json.dumps(poll_result))
+                        try:
+                            logger.debug(f'Got Task ID: {task_id}')
+                            poll_result = await self.poll_task(task_id)
+                            if poll_result:
+                                # If the asyncio task is cancelled when a WebSocket message is being sent,
+                                # it is because the WebSocket connection has been closed. This means that
+                                # either a ConnectionClosedOK exception should occur here, or a CancelledError
+                                # should occur here. Regardless, the RabbitMQ message will be requeued safely
+                                await ws.send(json.dumps(poll_result))
+                        except Exception as e:
+                            logger.debug(f'Task {task_id} requeued due to exception')
+                            raise e
 
     def ws_message_consumer(self, ws, msg):
         return self.loop.create_task(self.mq_receive_task(ws, msg))
 
     async def handle_connection(self, ws, path):
-        logger.info(f'New WebSocket connection created')
+        logger.debug('New WebSocket connection created')
         message_consumer_tasks = []
         try:
             async for msg in ws:
@@ -140,9 +164,8 @@ class WebSocketServer:
         except Exception as e:
             logger.debug(f'Connection closed with exception: {e}')
 
-        logger.debug('WebSocket connection closed')
+        logger.debug('WebSocket connection closed, cancelling message consumers')
         for task in message_consumer_tasks:
-            logger.debug(f'Cancelling message consumer {task}')
             task.cancel()
 
     async def process_request(self, path, headers):
