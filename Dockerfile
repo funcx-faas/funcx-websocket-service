@@ -3,7 +3,7 @@ FROM python:3.7
 # Create a group and user
 RUN addgroup uwsgi && useradd -g uwsgi uwsgi
 
-WORKDIR /opt/funcx-ws
+WORKDIR /opt/funcx-websocket-service
 
 COPY ./requirements.txt .
 
