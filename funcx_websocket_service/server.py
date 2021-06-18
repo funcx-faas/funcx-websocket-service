@@ -9,9 +9,6 @@ from funcx_websocket_service.auth import AuthClient
 from funcx.serialize import FuncXSerializer
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-logger.addHandler(handler)
 
 
 class WebSocketServer:
@@ -21,7 +18,6 @@ class WebSocketServer:
         self.rabbitmq_host = rabbitmq_host
         self.funcx_service_address = f'{web_service_uri}/v2'
         logger.info(f"funcx_service_address : {self.funcx_service_address}")
-        # self.funcx_service_address = 'https://api.funcx.org/v1'
         self.auth_client = AuthClient(self.funcx_service_address)
 
         self.fx_serializer = FuncXSerializer(use_offprocess_checker=True)
