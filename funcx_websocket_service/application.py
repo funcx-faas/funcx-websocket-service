@@ -3,9 +3,6 @@ import logging
 from funcx_websocket_service.server import WebSocketServer
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-logger.addHandler(handler)
 
 
 def run():

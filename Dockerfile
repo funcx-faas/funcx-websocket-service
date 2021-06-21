@@ -17,5 +17,5 @@ COPY ./run.py .
 USER uwsgi
 EXPOSE 6000
 
-CMD [ "python", "-u", "./run.py" ]
+CMD [ "python", "-u", "./run.py", "--debug" ]
 # CMD sh web-entrypoint.sh
