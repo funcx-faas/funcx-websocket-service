@@ -8,6 +8,7 @@ import http
 from concurrent.futures import CancelledError
 from websockets.exceptions import ConnectionClosedOK
 from funcx_websocket_service.auth import AuthClient
+from funcx_websocket_service.version import VERSION, MIN_SDK_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -160,5 +161,12 @@ class WebSocketServer:
 
     async def process_request(self, path, headers):
         if path == '/v2/health':
-            return http.HTTPStatus.OK, [], b"OK\n"
+            version_data = {
+                "version": VERSION,
+                "min_sdk_version": MIN_SDK_VERSION
+            }
+            json_str = json.dumps(version_data)
+            res_str = f"{json_str}\n"
+
+            return http.HTTPStatus.OK, [], res_str.encode()
         return await self.auth_client.authenticate(headers)
