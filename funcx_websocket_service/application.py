@@ -4,6 +4,7 @@ import logging
 from funcx_websocket_service.server import WebSocketServer
 from funcx_websocket_service.utils.loggers import set_stream_logger
 
+
 def cli():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action='store_true',
@@ -48,6 +49,7 @@ def run():
     logger.debug(f'Using redis host: {REDIS_HOST}, redis port: {REDIS_PORT}, RabbitMQ host: {RABBITMQ_HOST}, web service URI: {WEB_SERVICE_URI}')
 
     WebSocketServer(REDIS_HOST, REDIS_PORT, RABBITMQ_HOST, WEB_SERVICE_URI)
+
 
 if __name__ == '__main__':
     cli()
