@@ -34,7 +34,7 @@ jobs:
     - name: Lint with Flake8
       run: |
         flake8
-    - name: Install package and run with timeout
+    - name: Run with timeout
       run: |
         python run_with_timeout.py
   publish:
