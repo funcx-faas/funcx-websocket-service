@@ -37,7 +37,7 @@ jobs:
     - name: Install package and run with timeout
       run: |
         pip install .
-        timeout 10 ./entrypoint.sh
+        timeout 10 bash entrypoint.sh
   publish:
     needs: test
     runs-on: ubuntu-latest
