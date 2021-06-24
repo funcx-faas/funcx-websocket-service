@@ -34,6 +34,10 @@ jobs:
     - name: Lint with Flake8
       run: |
         flake8
+    - name: Install package and run with timeout
+      run: |
+        pip install .
+        timeout 10 ./entrypoint.sh
   publish:
     needs: test
     runs-on: ubuntu-latest
