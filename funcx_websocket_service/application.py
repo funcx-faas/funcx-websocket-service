@@ -1,11 +1,22 @@
 import os
+import argparse
 import logging
 from funcx_websocket_service.server import WebSocketServer
+from funcx_websocket_service.utils.loggers import set_stream_logger
 
-logger = logging.getLogger(__name__)
 
+def cli():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--debug", action='store_true',
+                        help="Debug logging")
 
-def run():
+    args = parser.parse_args()
+
+    env_debug = os.environ.get('FUNCX_WEBSOCKET_SERVICE_DEBUG')
+
+    debug = args.debug is True or env_debug is not None
+    logger = set_stream_logger(level=logging.DEBUG if debug else logging.INFO)
+
     REDIS_HOST = os.environ.get('REDIS_HOST')
     if not REDIS_HOST:
         REDIS_HOST = os.environ.get('FUNCX_REDIS_MASTER_SERVICE_HOST')
