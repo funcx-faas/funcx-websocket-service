@@ -104,8 +104,13 @@ class WebSocketServer:
         res['user_id'] = int(res['user_id'])
         return res
 
-    async def poll_task(self, rc, task_id):
+    async def poll_task(self, rc, task_id: str):
         """Gets task info from redis
+
+        Returns
+        -------
+        None: if task exists in redis but is not complete
+        Dict of task status: if task is not found or is complete
         """
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
@@ -166,6 +171,17 @@ class WebSocketServer:
             logger.info('dispatched_to_user', extra=extra_logging)
 
     async def mq_receive_task(self, ws, task_group_id):
+        """asyncio awaitable which handles expected exceptions from the
+        RabbitMQ message handler
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            Connection to send messages to
+
+        task_group_id : str
+            Task group ID to wait for RabbitMQ messages on
+        """
         try:
             await self.mq_receive(ws, task_group_id)
         except CancelledError:
@@ -178,7 +194,15 @@ class WebSocketServer:
     async def mq_receive(self, ws, task_group_id):
         """
         Receives completed tasks based on task_group_id on a RabbitMQ queue and sends them back
-        to the user, assuming they own the task group they have requested
+        to the user, after first confirming they own the task group they have requested
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            Connection to send messages to
+
+        task_group_id : str
+            Task group ID to wait for RabbitMQ messages on
         """
         # confirm with the web service that this user can access this task_group_id
         headers = ws.request_headers
@@ -211,9 +235,35 @@ class WebSocketServer:
                         await self.handle_mq_message(ws, task_group_id, message)
 
     def ws_message_consumer(self, ws, msg):
+        """Consumer for incoming WebSocket messages
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            Connection that message is coming from
+
+        msg : str
+            Incoming message
+
+        Returns
+        -------
+        asyncio.Task
+            async Task to process incoming task updates based on the sent WebSocket message
+        """
         return self.loop.create_task(self.mq_receive_task(ws, msg))
 
     async def handle_connection(self, ws, path):
+        """Handles new WebSocket connection by creating new asyncio task to process
+        incoming messages, then cancels all of these tasks when the WebSocket closes
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            New WebSocket connection
+
+        path : str
+            Path of request
+        """
         logger.debug('New WebSocket connection created')
         message_consumer_tasks = []
         try:
@@ -229,6 +279,27 @@ class WebSocketServer:
             task.cancel()
 
     async def process_request(self, path, headers):
+        """Processes HTTP request before upgrading to WebSocket connection. This
+        includes an HTTP health check that does not become a WebSocket connection.
+        If this health path is not requested, the new WebSocket connection will be
+        authenticated based on headers sent in this initial handshake.
+
+        Parameters
+        ----------
+        path : str
+            Path of request
+
+        headers : websockets.datastructures.Headers
+            Request headers
+
+        Returns
+        -------
+        None: if the user is authenticated successfully and a WebSocket
+            connection should be made
+        (status, headers, response): if a WebSocket connection should not be created
+            and a simple HTTP response should be sent instead, either because the health
+            check path was requested or because the user could not be authenticated
+        """
         if path == '/v2/health':
             version_data = {
                 "version": VERSION,

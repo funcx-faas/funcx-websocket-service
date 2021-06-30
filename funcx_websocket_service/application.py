@@ -6,6 +6,9 @@ from funcx_websocket_service.utils.loggers import set_stream_logger
 
 
 def cli():
+    """CLI entrypoint for WebSocket server that takes CLI args, gathers env vars,
+    and starts the WebSocket server
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action='store_true',
                         help="Debug logging")
