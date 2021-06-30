@@ -14,7 +14,34 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketServer:
-    def __init__(self, redis_host, redis_port, rabbitmq_host, web_service_uri):
+    """An async WebSocket server that authenticates WebSocket clients, listens
+    for RabbitMQ messages, and sends along those task updates to the intended
+    clients.
+    """
+
+    def __init__(
+        self,
+        redis_host: str,
+        redis_port: str,
+        rabbitmq_host: str,
+        web_service_uri: str
+    ):
+        """Initialize and run the server
+
+        Parameters
+        ----------
+        redis_host : str
+            Redis host
+
+        redis_port : str
+            Redis port
+
+        rabbitmq_host : str
+            RabbitMQ host
+
+        web_service_uri : str
+            Web Service URI to use, likely an internal k8s DNS name
+        """
         self.redis_host = redis_host
         self.redis_port = redis_port
         self.rabbitmq_host = rabbitmq_host
@@ -29,13 +56,17 @@ class WebSocketServer:
         start_server = websockets.serve(self.handle_connection, '0.0.0.0', self.ws_port, process_request=self.process_request)
 
         self.loop.run_until_complete(start_server)
-        self.loop.run_until_complete(self.on_server_started())
+        logger.info(f'WebSocket Server started on port {self.ws_port}')
         self.loop.run_forever()
 
-    async def on_server_started(self):
-        logger.info(f'WebSocket Server started on port {self.ws_port}')
-
     async def get_redis_client(self):
+        """Gets redis client using provided redis host and port for this server
+
+        Returns
+        -------
+        aioredis.Redis
+            Default asyncio redis client
+        """
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
         return redis_client
 
@@ -74,8 +105,7 @@ class WebSocketServer:
         return res
 
     async def poll_task(self, rc, task_id):
-        """
-        Gets task info from redis
+        """Gets task info from redis
         """
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
