@@ -84,9 +84,13 @@ websocket-service [--debug]
 
 `REDIS_HOST` - redis host (defaults to `127.0.0.1`)
 
+`FUNCX_REDIS_MASTER_SERVICE_HOST` - redis host set by Helm deployment (`REDIS_HOST` overrides this if set)
+
 `REDIS_PORT` - redis port (defaults to `6379`)
 
 `RABBITMQ_HOST` - RabbitMQ host (defaults to `127.0.0.1`)
+
+`FUNCX_RABBITMQ_SERVICE_HOST` - RabbitMQ host set by Helm deployment (`RABBITMQ_HOST` overrides this if set)
 
 `WEB_SERVICE_URI` - funcX web service URI (defaults to `http://127.0.0.1:5000`)
 
