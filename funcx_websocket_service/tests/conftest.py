@@ -8,6 +8,7 @@ import pytest
 dir_path = os.path.dirname(os.path.realpath(__file__))
 root_path = os.path.abspath(os.path.join(dir_path, '../..'))
 
+
 @pytest.fixture(autouse=True, scope="session")
 def run_server():
     # See: https://stackoverflow.com/questions/4789837/how-to-terminate-a-python-subprocess-launched-with-shell-true
