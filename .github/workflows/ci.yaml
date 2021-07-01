@@ -34,9 +34,6 @@ jobs:
     - name: Lint with Flake8
       run: |
         flake8
-    - name: Run with timeout
-      run: |
-        python run_with_timeout.py
   publish:
     needs: test
     runs-on: ubuntu-latest
