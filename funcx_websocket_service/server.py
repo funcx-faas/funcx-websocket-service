@@ -110,7 +110,7 @@ class WebSocketServer:
                 "endpoint_id": endpoint_id,
                 "task_transition": True
             }
-            logger.debug(f'Task received from RabbitMQ', extra=extra_logging)
+            logger.debug('Task received from RabbitMQ', extra=extra_logging)
             poll_result = await self.poll_task(rc, task_id)
             rc.close()
             await rc.wait_closed()
