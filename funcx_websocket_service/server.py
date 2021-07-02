@@ -39,11 +39,23 @@ class WebSocketServer:
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
         return redis_client
 
-    async def poll_task(self, task_id):
+    async def get_task_data(self, rc, task_id):
+        task_hname = f'task_{task_id}'
+        exists = await rc.exists(task_hname)
+        if not exists:
+            return None
+        endpoint_id = await rc.hget(task_hname, 'endpoint')
+        if endpoint_id:
+            endpoint_id = endpoint_id.decode('utf-8')
+
+        return {
+            'endpoint_id': endpoint_id
+        }
+
+    async def poll_task(self, rc, task_id):
         """
         Gets task info from redis
         """
-        rc = await self.get_redis_client()
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
         if not exists:
@@ -80,9 +92,37 @@ class WebSocketServer:
             'exception': task_exception
         }
 
-        rc.close()
-        await rc.wait_closed()
         return res
+
+    async def handle_mq_message(self, ws, task_group_id, message, user_id):
+        try:
+            rc = await self.get_redis_client()
+            task_id = message.body.decode('utf-8')
+
+            task_data = await self.get_task_data(rc, task_id)
+            endpoint_id = None
+            if task_data:
+                endpoint_id = task_data['endpoint_id']
+            extra_logging = {
+                "user_id": user_id,
+                "task_id": task_id,
+                "task_group_id": task_group_id,
+                "endpoint_id": endpoint_id,
+                "task_transition": True
+            }
+            logger.debug(f'Task received from RabbitMQ', extra=extra_logging)
+            poll_result = await self.poll_task(rc, task_id)
+            rc.close()
+            await rc.wait_closed()
+            if poll_result:
+                # If the asyncio task is cancelled when a WebSocket message is being sent,
+                # it is because the WebSocket connection has been closed. This means that
+                # either a ConnectionClosedOK exception should occur here, or a CancelledError
+                # should occur here. Regardless, the RabbitMQ message will be requeued safely
+                await ws.send(json.dumps(poll_result))
+        except Exception as e:
+            logger.debug(f'Task {task_id} requeued due to exception')
+            raise e
 
     async def mq_receive_task(self, ws, task_group_id):
         try:
@@ -104,6 +144,7 @@ class WebSocketServer:
         task_group_info = await self.auth_client.authorize_task_group(headers, task_group_id)
         if not task_group_info:
             return
+        user_id = task_group_info['user_id']
 
         logger.debug(f'Message consumer {task_group_id} started')
 
@@ -127,19 +168,7 @@ class WebSocketServer:
                     # task has been cancelled externally, due to the WebSocket connection being
                     # closed.
                     async with message.process(requeue=True):
-                        task_id = message.body.decode('utf-8')
-                        try:
-                            logger.debug(f'Got Task ID: {task_id}')
-                            poll_result = await self.poll_task(task_id)
-                            if poll_result:
-                                # If the asyncio task is cancelled when a WebSocket message is being sent,
-                                # it is because the WebSocket connection has been closed. This means that
-                                # either a ConnectionClosedOK exception should occur here, or a CancelledError
-                                # should occur here. Regardless, the RabbitMQ message will be requeued safely
-                                await ws.send(json.dumps(poll_result))
-                        except Exception as e:
-                            logger.debug(f'Task {task_id} requeued due to exception')
-                            raise e
+                        await self.handle_mq_message(ws, task_group_id, message, user_id)
 
     def ws_message_consumer(self, ws, msg):
         return self.loop.create_task(self.mq_receive_task(ws, msg))
