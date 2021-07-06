@@ -39,17 +39,26 @@ class WebSocketServer:
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
         return redis_client
 
+    async def redis_hget(self, rc, hname, key):
+        value = await rc.hget(hname, key)
+        if value:
+            value = value.decode('utf-8')
+        return value
+
     async def get_task_data(self, rc, task_id):
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
         if not exists:
             return None
-        endpoint_id = await rc.hget(task_hname, 'endpoint')
-        if endpoint_id:
-            endpoint_id = endpoint_id.decode('utf-8')
+
+        function_id = await self.redis_hget(rc, task_hname, 'function_id')
+        endpoint_id = await self.redis_hget(rc, task_hname, 'endpoint')
+        container_id = await self.redis_hget(rc, task_hname, 'container')
 
         return {
-            'endpoint_id': endpoint_id
+            'function_id': function_id,
+            'endpoint_id': endpoint_id,
+            'container_id': container_id
         }
 
     async def poll_task(self, rc, task_id):
@@ -65,24 +74,15 @@ class WebSocketServer:
                 'reason': 'Unknown task id'
             }
 
-        task_result = await rc.hget(task_hname, 'result')
-        task_exception = await rc.hget(task_hname, 'exception')
+        task_result = await self.redis_hget(rc, task_hname, 'result')
+        task_exception = await self.redis_hget(rc, task_hname, 'exception')
         if task_result is None and task_exception is None:
             return None
 
         # TODO: delete task from redis
 
-        task_status = await rc.hget(task_hname, 'status')
-        task_completion_t = await rc.hget(task_hname, 'completion_time')
-
-        if task_result:
-            task_result = task_result.decode('utf-8')
-        if task_exception:
-            task_exception = task_exception.decode('utf-8')
-        if task_status:
-            task_status = task_status.decode('utf-8')
-        if task_completion_t:
-            task_completion_t = task_completion_t.decode('utf-8')
+        task_status = await self.redis_hget(rc, task_hname, 'status')
+        task_completion_t = await self.redis_hget(rc, task_hname, 'completion_time')
 
         res = {
             'task_id': task_id,
@@ -100,17 +100,23 @@ class WebSocketServer:
             task_id = message.body.decode('utf-8')
 
             task_data = await self.get_task_data(rc, task_id)
+            function_id = None
             endpoint_id = None
+            container_id = None
             if task_data:
+                function_id = task_data['function_id']
                 endpoint_id = task_data['endpoint_id']
+                container_id = task_data['container_id']
             extra_logging = {
                 "user_id": user_id,
                 "task_id": task_id,
                 "task_group_id": task_group_id,
+                "function_id": function_id,
                 "endpoint_id": endpoint_id,
+                "container_id": container_id,
                 "task_transition": True
             }
-            logger.debug('Task received from RabbitMQ', extra=extra_logging)
+            logger.info('rabbitmq', extra=extra_logging)
             poll_result = await self.poll_task(rc, task_id)
             rc.close()
             await rc.wait_closed()
