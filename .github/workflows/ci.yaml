@@ -34,9 +34,9 @@ jobs:
     - name: Lint with Flake8
       run: |
         flake8
-    - name: Run with timeout
+    - name: Test with pytest
       run: |
-        python run_with_timeout.py
+        pytest funcx_websocket_service/tests
   publish:
     needs: test
     runs-on: ubuntu-latest
