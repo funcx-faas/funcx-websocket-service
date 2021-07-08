@@ -5,7 +5,7 @@ This service sends task updates to FuncX clients via WebSockets.
 ## How to build docker image
 
 ```
-docker build -t funcx_websocket_service:develop --target build .
+docker build -t funcx_websocket_service:develop .
 ```
 
 ## Deploying locally with Helm chart
@@ -60,10 +60,16 @@ export POD_NAME=$(kubectl get pods --namespace default -l "app=funcx-funcx-webso
 
 ## Testing
 
-This docker build with the `test` target will fail if tests do not pass.
+First install test requirements:
 
 ```
-docker build -t <tag> --target test .
+python -m pip install -r test-requirements.txt
+```
+
+Then run tests with pytest:
+
+```
+pytest funcx_websocket_service/tests
 ```
 
 ## CLI
