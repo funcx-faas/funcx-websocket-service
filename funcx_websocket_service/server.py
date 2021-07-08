@@ -97,6 +97,7 @@ class WebSocketServer:
         return res
 
     async def handle_mq_message(self, ws, task_group_id, message):
+        extra_logging = None
         try:
             rc = await self.get_redis_client()
             task_id = message.body.decode('utf-8')
@@ -120,7 +121,7 @@ class WebSocketServer:
                 "container_id": container_id,
                 "task_transition": True
             }
-            logger.info('dequeued', extra=extra_logging)
+            logger.info('result-dequeued', extra=extra_logging)
             poll_result = await self.poll_task(rc, task_id)
             rc.close()
             await rc.wait_closed()
@@ -133,6 +134,8 @@ class WebSocketServer:
         except Exception as e:
             logger.debug(f'Task {task_id} requeued due to exception')
             raise e
+        else:
+            logger.info('result-sent', extra=extra_logging)
 
     async def mq_receive_task(self, ws, task_group_id):
         try:
