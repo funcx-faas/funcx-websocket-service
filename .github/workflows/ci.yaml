@@ -34,6 +34,9 @@ jobs:
     - name: Lint with Flake8
       run: |
         flake8
+    - name: Test with pytest
+      run: |
+        pytest funcx_websocket_service/tests
   publish:
     needs: test
     runs-on: ubuntu-latest
