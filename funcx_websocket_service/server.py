@@ -121,7 +121,7 @@ class WebSocketServer:
                 "container_id": container_id,
                 "task_transition": True
             }
-            logger.info('result-dequeued', extra=extra_logging)
+
             poll_result = await self.poll_task(rc, task_id)
             rc.close()
             await rc.wait_closed()
@@ -135,7 +135,7 @@ class WebSocketServer:
             logger.debug(f'Task {task_id} requeued due to exception')
             raise e
         else:
-            logger.info('result-sent', extra=extra_logging)
+            logger.info('dispatched_to_user', extra=extra_logging)
 
     async def mq_receive_task(self, ws, task_group_id):
         try:
