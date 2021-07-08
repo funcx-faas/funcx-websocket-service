@@ -51,11 +51,13 @@ class WebSocketServer:
         if not exists:
             return None
 
+        user_id = int(await self.redis_hget(rc, task_hname, 'user_id'))
         function_id = await self.redis_hget(rc, task_hname, 'function_id')
         endpoint_id = await self.redis_hget(rc, task_hname, 'endpoint')
         container_id = await self.redis_hget(rc, task_hname, 'container')
 
         return {
+            'user_id': user_id,
             'function_id': function_id,
             'endpoint_id': endpoint_id,
             'container_id': container_id
@@ -94,16 +96,18 @@ class WebSocketServer:
 
         return res
 
-    async def handle_mq_message(self, ws, task_group_id, message, user_id):
+    async def handle_mq_message(self, ws, task_group_id, message):
         try:
             rc = await self.get_redis_client()
             task_id = message.body.decode('utf-8')
 
             task_data = await self.get_task_data(rc, task_id)
+            user_id = None
             function_id = None
             endpoint_id = None
             container_id = None
             if task_data:
+                user_id = task_data['user_id']
                 function_id = task_data['function_id']
                 endpoint_id = task_data['endpoint_id']
                 container_id = task_data['container_id']
@@ -116,7 +120,7 @@ class WebSocketServer:
                 "container_id": container_id,
                 "task_transition": True
             }
-            logger.info('rabbitmq', extra=extra_logging)
+            logger.info('dequeued', extra=extra_logging)
             poll_result = await self.poll_task(rc, task_id)
             rc.close()
             await rc.wait_closed()
@@ -150,7 +154,6 @@ class WebSocketServer:
         task_group_info = await self.auth_client.authorize_task_group(headers, task_group_id)
         if not task_group_info:
             return
-        user_id = task_group_info['user_id']
 
         logger.debug(f'Message consumer {task_group_id} started')
 
@@ -174,7 +177,7 @@ class WebSocketServer:
                     # task has been cancelled externally, due to the WebSocket connection being
                     # closed.
                     async with message.process(requeue=True):
-                        await self.handle_mq_message(ws, task_group_id, message, user_id)
+                        await self.handle_mq_message(ws, task_group_id, message)
 
     def ws_message_consumer(self, ws, msg):
         return self.loop.create_task(self.mq_receive_task(ws, msg))
