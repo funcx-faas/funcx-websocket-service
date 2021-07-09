@@ -45,23 +45,33 @@ class WebSocketServer:
             value = value.decode('utf-8')
         return value
 
+    async def redis_hmget(self, rc, hname, keys):
+        values = await rc.hmget(hname, *keys)
+        if values:
+            values = list(map(lambda v: v.decode('utf-8'), values))
+        return values
+
     async def get_task_data(self, rc, task_id):
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
+
+        # these are the keys we need to pull from the redis task object
+        keys = ['user_id', 'function_id', 'endpoint', 'container']
+        # these are the keys we want to assign to the results in a dict,
+        # in the same order as the keys we are fetching above
+        final_keys = ['user_id', 'function_id', 'endpoint_id', 'container_id']
+
+        empty_dict = dict.fromkeys(final_keys, None)
         if not exists:
-            return None
+            return empty_dict
 
-        user_id = int(await self.redis_hget(rc, task_hname, 'user_id'))
-        function_id = await self.redis_hget(rc, task_hname, 'function_id')
-        endpoint_id = await self.redis_hget(rc, task_hname, 'endpoint')
-        container_id = await self.redis_hget(rc, task_hname, 'container')
+        values = await self.redis_hmget(rc, task_hname, keys)
+        if not values:
+            return empty_dict
 
-        return {
-            'user_id': user_id,
-            'function_id': function_id,
-            'endpoint_id': endpoint_id,
-            'container_id': container_id
-        }
+        res = dict(zip(final_keys, values))
+        res['user_id'] = int(res['user_id'])
+        return res
 
     async def poll_task(self, rc, task_id):
         """
@@ -103,24 +113,12 @@ class WebSocketServer:
             task_id = message.body.decode('utf-8')
 
             task_data = await self.get_task_data(rc, task_id)
-            user_id = None
-            function_id = None
-            endpoint_id = None
-            container_id = None
-            if task_data:
-                user_id = task_data['user_id']
-                function_id = task_data['function_id']
-                endpoint_id = task_data['endpoint_id']
-                container_id = task_data['container_id']
             extra_logging = {
-                "user_id": user_id,
                 "task_id": task_id,
                 "task_group_id": task_group_id,
-                "function_id": function_id,
-                "endpoint_id": endpoint_id,
-                "container_id": container_id,
                 "task_transition": True
             }
+            extra_logging.update(task_data)
 
             poll_result = await self.poll_task(rc, task_id)
             rc.close()
