@@ -2,3 +2,4 @@ aioredis
 aiohttp
 websockets
 aio-pika
+python-json-logger

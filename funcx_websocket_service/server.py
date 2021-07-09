@@ -39,11 +39,44 @@ class WebSocketServer:
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
         return redis_client
 
-    async def poll_task(self, task_id):
+    async def redis_hget(self, rc, hname, key):
+        value = await rc.hget(hname, key)
+        if value:
+            value = value.decode('utf-8')
+        return value
+
+    async def redis_hmget(self, rc, hname, keys):
+        values = await rc.hmget(hname, *keys)
+        if values:
+            values = list(map(lambda v: v.decode('utf-8'), values))
+        return values
+
+    async def get_task_data(self, rc, task_id):
+        task_hname = f'task_{task_id}'
+        exists = await rc.exists(task_hname)
+
+        # these are the keys we need to pull from the redis task object
+        keys = ['user_id', 'function_id', 'endpoint', 'container']
+        # these are the keys we want to assign to the results in a dict,
+        # in the same order as the keys we are fetching above
+        final_keys = ['user_id', 'function_id', 'endpoint_id', 'container_id']
+
+        empty_dict = dict.fromkeys(final_keys, None)
+        if not exists:
+            return empty_dict
+
+        values = await self.redis_hmget(rc, task_hname, keys)
+        if not values:
+            return empty_dict
+
+        res = dict(zip(final_keys, values))
+        res['user_id'] = int(res['user_id'])
+        return res
+
+    async def poll_task(self, rc, task_id):
         """
         Gets task info from redis
         """
-        rc = await self.get_redis_client()
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
         if not exists:
@@ -53,24 +86,15 @@ class WebSocketServer:
                 'reason': 'Unknown task id'
             }
 
-        task_result = await rc.hget(task_hname, 'result')
-        task_exception = await rc.hget(task_hname, 'exception')
+        task_result = await self.redis_hget(rc, task_hname, 'result')
+        task_exception = await self.redis_hget(rc, task_hname, 'exception')
         if task_result is None and task_exception is None:
             return None
 
         # TODO: delete task from redis
 
-        task_status = await rc.hget(task_hname, 'status')
-        task_completion_t = await rc.hget(task_hname, 'completion_time')
-
-        if task_result:
-            task_result = task_result.decode('utf-8')
-        if task_exception:
-            task_exception = task_exception.decode('utf-8')
-        if task_status:
-            task_status = task_status.decode('utf-8')
-        if task_completion_t:
-            task_completion_t = task_completion_t.decode('utf-8')
+        task_status = await self.redis_hget(rc, task_hname, 'status')
+        task_completion_t = await self.redis_hget(rc, task_hname, 'completion_time')
 
         res = {
             'task_id': task_id,
@@ -80,9 +104,36 @@ class WebSocketServer:
             'exception': task_exception
         }
 
-        rc.close()
-        await rc.wait_closed()
         return res
+
+    async def handle_mq_message(self, ws, task_group_id, message):
+        extra_logging = None
+        try:
+            rc = await self.get_redis_client()
+            task_id = message.body.decode('utf-8')
+
+            task_data = await self.get_task_data(rc, task_id)
+            extra_logging = {
+                "task_id": task_id,
+                "task_group_id": task_group_id,
+                "task_transition": True
+            }
+            extra_logging.update(task_data)
+
+            poll_result = await self.poll_task(rc, task_id)
+            rc.close()
+            await rc.wait_closed()
+            if poll_result:
+                # If the asyncio task is cancelled when a WebSocket message is being sent,
+                # it is because the WebSocket connection has been closed. This means that
+                # either a ConnectionClosedOK exception should occur here, or a CancelledError
+                # should occur here. Regardless, the RabbitMQ message will be requeued safely
+                await ws.send(json.dumps(poll_result))
+        except Exception as e:
+            logger.debug(f'Task {task_id} requeued due to exception')
+            raise e
+        else:
+            logger.info('dispatched_to_user', extra=extra_logging)
 
     async def mq_receive_task(self, ws, task_group_id):
         try:
@@ -127,19 +178,7 @@ class WebSocketServer:
                     # task has been cancelled externally, due to the WebSocket connection being
                     # closed.
                     async with message.process(requeue=True):
-                        task_id = message.body.decode('utf-8')
-                        try:
-                            logger.debug(f'Got Task ID: {task_id}')
-                            poll_result = await self.poll_task(task_id)
-                            if poll_result:
-                                # If the asyncio task is cancelled when a WebSocket message is being sent,
-                                # it is because the WebSocket connection has been closed. This means that
-                                # either a ConnectionClosedOK exception should occur here, or a CancelledError
-                                # should occur here. Regardless, the RabbitMQ message will be requeued safely
-                                await ws.send(json.dumps(poll_result))
-                        except Exception as e:
-                            logger.debug(f'Task {task_id} requeued due to exception')
-                            raise e
+                        await self.handle_mq_message(ws, task_group_id, message)
 
     def ws_message_consumer(self, ws, msg):
         return self.loop.create_task(self.mq_receive_task(ws, msg))
