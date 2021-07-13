@@ -10,7 +10,7 @@ def set_stream_logger(name='funcx_websocket_service', level=logging.DEBUG):
         - level (logging.LEVEL) : Set to logging.DEBUG by default.
 
     Returns:
-        - None
+        - Logger
     """
 
     logger = logging.getLogger(name)

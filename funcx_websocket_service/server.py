@@ -14,7 +14,34 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketServer:
-    def __init__(self, redis_host, redis_port, rabbitmq_host, web_service_uri):
+    """An async WebSocket server that authenticates WebSocket clients, listens
+    for RabbitMQ messages, and sends along those task updates to the intended
+    clients.
+    """
+
+    def __init__(
+        self,
+        redis_host: str,
+        redis_port: str,
+        rabbitmq_host: str,
+        web_service_uri: str
+    ):
+        """Initialize and run the server
+
+        Parameters
+        ----------
+        redis_host : str
+            Redis host
+
+        redis_port : str
+            Redis port
+
+        rabbitmq_host : str
+            RabbitMQ host
+
+        web_service_uri : str
+            Web Service URI to use, likely an internal k8s DNS name
+        """
         self.redis_host = redis_host
         self.redis_port = redis_port
         self.rabbitmq_host = rabbitmq_host
@@ -29,29 +56,85 @@ class WebSocketServer:
         start_server = websockets.serve(self.handle_connection, '0.0.0.0', self.ws_port, process_request=self.process_request)
 
         self.loop.run_until_complete(start_server)
-        self.loop.run_until_complete(self.on_server_started())
+        logger.info(f'WebSocket Server started on port {self.ws_port}')
         self.loop.run_forever()
 
-    async def on_server_started(self):
-        logger.info(f'WebSocket Server started on port {self.ws_port}')
-
     async def get_redis_client(self):
+        """Gets redis client using provided redis host and port for this server
+
+        Returns
+        -------
+        aioredis.Redis
+            Default asyncio redis client
+        """
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
         return redis_client
 
-    async def redis_hget(self, rc, hname, key):
+    async def redis_hget(self, rc: aioredis.Redis, hname: str, key: str):
+        """Async redis hget that converts result to a string
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client to use for querying
+
+        hname : str
+            Hash name for query
+
+        key : str
+            key to query
+
+        Returns
+        -------
+        str
+            Resulting value of query
+        """
         value = await rc.hget(hname, key)
         if value:
             value = value.decode('utf-8')
         return value
 
-    async def redis_hmget(self, rc, hname, keys):
+    async def redis_hmget(self, rc: aioredis.Redis, hname: str, keys):
+        """Async redis hmget that converts results to strings
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client to use for querying
+
+        hname : str
+            Hash name for query
+
+        keys : List of str
+            List of keys to query
+
+        Returns
+        -------
+        List of str
+            List of str values corresponding to the keys
+        """
         values = await rc.hmget(hname, *keys)
         if values:
             values = list(map(lambda v: v.decode('utf-8'), values))
         return values
 
-    async def get_task_data(self, rc, task_id):
+    async def get_task_data(self, rc: aioredis.Redis, task_id: str):
+        """Gets additional useful properties about a task
+        (user_id, function_id, etc.)
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client to use for getting task info
+
+        task_id : str
+            Task ID to query
+
+        Returns
+        -------
+        Dict
+            Task data values
+        """
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
 
@@ -73,9 +156,21 @@ class WebSocketServer:
         res['user_id'] = int(res['user_id'])
         return res
 
-    async def poll_task(self, rc, task_id):
-        """
-        Gets task info from redis
+    async def poll_task(self, rc: aioredis.Redis, task_id: str):
+        """Gets task info from redis
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client to use for getting task info
+
+        task_id : str
+            Task ID to query
+
+        Returns
+        -------
+        None: if task exists in redis but is not complete
+        Dict of task status: if task is not found or is complete
         """
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
@@ -106,7 +201,20 @@ class WebSocketServer:
 
         return res
 
-    async def handle_mq_message(self, ws, task_group_id, message):
+    async def handle_mq_message(self, ws, task_group_id: str, message):
+        """Handles new messages coming off of the RabbitMQ queue
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            Connection to send messages to
+
+        task_group_id : str
+            Task group ID for the queue
+
+        message : RabbitMQ message
+            Message containing data sent through the queue
+        """
         extra_logging = None
         try:
             rc = await self.get_redis_client()
@@ -135,7 +243,18 @@ class WebSocketServer:
         else:
             logger.info('dispatched_to_user', extra=extra_logging)
 
-    async def mq_receive_task(self, ws, task_group_id):
+    async def mq_receive_task(self, ws, task_group_id: str):
+        """asyncio awaitable which handles expected exceptions from the
+        RabbitMQ message handler
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            Connection to send messages to
+
+        task_group_id : str
+            Task group ID to wait for RabbitMQ messages on
+        """
         try:
             await self.mq_receive(ws, task_group_id)
         except CancelledError:
@@ -145,10 +264,18 @@ class WebSocketServer:
         except Exception as e:
             logger.exception(e)
 
-    async def mq_receive(self, ws, task_group_id):
+    async def mq_receive(self, ws, task_group_id: str):
         """
         Receives completed tasks based on task_group_id on a RabbitMQ queue and sends them back
-        to the user, assuming they own the task group they have requested
+        to the user, after first confirming they own the task group they have requested
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            Connection to send messages to
+
+        task_group_id : str
+            Task group ID to wait for RabbitMQ messages on
         """
         # confirm with the web service that this user can access this task_group_id
         headers = ws.request_headers
@@ -180,10 +307,36 @@ class WebSocketServer:
                     async with message.process(requeue=True):
                         await self.handle_mq_message(ws, task_group_id, message)
 
-    def ws_message_consumer(self, ws, msg):
+    def ws_message_consumer(self, ws, msg: str):
+        """Consumer for incoming WebSocket messages
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            Connection that message is coming from
+
+        msg : str
+            Incoming message
+
+        Returns
+        -------
+        asyncio.Task
+            async Task to process incoming task updates based on the sent WebSocket message
+        """
         return self.loop.create_task(self.mq_receive_task(ws, msg))
 
     async def handle_connection(self, ws, path):
+        """Handles new WebSocket connection by creating new asyncio task to process
+        incoming messages, then cancels all of these tasks when the WebSocket closes
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            New WebSocket connection
+
+        path : str
+            Path of request
+        """
         logger.debug('New WebSocket connection created')
         message_consumer_tasks = []
         try:
@@ -199,6 +352,27 @@ class WebSocketServer:
             task.cancel()
 
     async def process_request(self, path, headers):
+        """Processes HTTP request before upgrading to WebSocket connection. This
+        includes an HTTP health check that does not become a WebSocket connection.
+        If this health path is not requested, the new WebSocket connection will be
+        authenticated based on headers sent in this initial handshake.
+
+        Parameters
+        ----------
+        path : str
+            Path of request
+
+        headers : websockets.datastructures.Headers
+            Request headers
+
+        Returns
+        -------
+        None: if the user is authenticated successfully and a WebSocket
+            connection should be made
+        (status, headers, response): if a WebSocket connection should not be created
+            and a simple HTTP response should be sent instead, either because the health
+            check path was requested or because the user could not be authenticated
+        """
         if path == '/v2/health':
             version_data = {
                 "version": VERSION,
