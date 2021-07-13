@@ -8,7 +8,7 @@ class AuthClient:
     """An auth client that authenticates users and authorizes them to receive
     task group updates by sending HTTP requests to the web service
     """
-    def __init__(self, funcx_service_address):
+    def __init__(self, funcx_service_address: str):
         """Initialize auth client
 
         Parameters
@@ -48,7 +48,7 @@ class AuthClient:
 
         return None
 
-    async def authorize_task_group(self, headers, task_group_id):
+    async def authorize_task_group(self, headers, task_group_id: str):
         """Authorizes a user to get status updates from a Task Group by sending an
         HTTP request to the web service to confirm they are authorized
 
@@ -76,7 +76,7 @@ class AuthClient:
                 return None
             return await r.json()
 
-    def full_path(self, path):
+    def full_path(self, path: str):
         """Create a full FuncX web service path to make an HTTP request
 
         Parameters

@@ -70,19 +70,71 @@ class WebSocketServer:
         redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
         return redis_client
 
-    async def redis_hget(self, rc, hname, key):
+    async def redis_hget(self, rc: aioredis.Redis, hname: str, key: str):
+        """Async redis hget that converts result to a string
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client to use for querying
+
+        hname : str
+            Hash name for query
+
+        key : str
+            key to query
+
+        Returns
+        -------
+        str
+            Resulting value of query
+        """
         value = await rc.hget(hname, key)
         if value:
             value = value.decode('utf-8')
         return value
 
-    async def redis_hmget(self, rc, hname, keys):
+    async def redis_hmget(self, rc: aioredis.Redis, hname: str, keys):
+        """Async redis hmget that converts results to strings
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client to use for querying
+
+        hname : str
+            Hash name for query
+
+        keys : List of str
+            List of keys to query
+
+        Returns
+        -------
+        List of str
+            List of str values corresponding to the keys
+        """
         values = await rc.hmget(hname, *keys)
         if values:
             values = list(map(lambda v: v.decode('utf-8'), values))
         return values
 
-    async def get_task_data(self, rc, task_id):
+    async def get_task_data(self, rc: aioredis.Redis, task_id: str):
+        """Gets additional useful properties about a task
+        (user_id, function_id, etc.)
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client to use for getting task info
+
+        task_id : str
+            Task ID to query
+
+        Returns
+        -------
+        Dict
+            Task data values
+        """
         task_hname = f'task_{task_id}'
         exists = await rc.exists(task_hname)
 
@@ -104,8 +156,16 @@ class WebSocketServer:
         res['user_id'] = int(res['user_id'])
         return res
 
-    async def poll_task(self, rc, task_id: str):
+    async def poll_task(self, rc: aioredis.Redis, task_id: str):
         """Gets task info from redis
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client to use for getting task info
+
+        task_id : str
+            Task ID to query
 
         Returns
         -------
@@ -141,7 +201,20 @@ class WebSocketServer:
 
         return res
 
-    async def handle_mq_message(self, ws, task_group_id, message):
+    async def handle_mq_message(self, ws, task_group_id: str, message):
+        """Handles new messages coming off of the RabbitMQ queue
+
+        Parameters
+        ----------
+        ws : WebSocket connection
+            Connection to send messages to
+
+        task_group_id : str
+            Task group ID for the queue
+
+        message : RabbitMQ message
+            Message containing data sent through the queue
+        """
         extra_logging = None
         try:
             rc = await self.get_redis_client()
@@ -170,7 +243,7 @@ class WebSocketServer:
         else:
             logger.info('dispatched_to_user', extra=extra_logging)
 
-    async def mq_receive_task(self, ws, task_group_id):
+    async def mq_receive_task(self, ws, task_group_id: str):
         """asyncio awaitable which handles expected exceptions from the
         RabbitMQ message handler
 
@@ -191,7 +264,7 @@ class WebSocketServer:
         except Exception as e:
             logger.exception(e)
 
-    async def mq_receive(self, ws, task_group_id):
+    async def mq_receive(self, ws, task_group_id: str):
         """
         Receives completed tasks based on task_group_id on a RabbitMQ queue and sends them back
         to the user, after first confirming they own the task group they have requested
@@ -234,7 +307,7 @@ class WebSocketServer:
                     async with message.process(requeue=True):
                         await self.handle_mq_message(ws, task_group_id, message)
 
-    def ws_message_consumer(self, ws, msg):
+    def ws_message_consumer(self, ws, msg: str):
         """Consumer for incoming WebSocket messages
 
         Parameters
