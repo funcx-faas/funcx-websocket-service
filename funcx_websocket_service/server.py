@@ -8,6 +8,7 @@ import http
 from concurrent.futures import CancelledError
 from websockets.exceptions import ConnectionClosedOK
 from funcx_websocket_service.auth import AuthClient
+from funcx_websocket_service.connection import WebSocketConnection
 from funcx_websocket_service.version import VERSION, MIN_SDK_VERSION
 
 logger = logging.getLogger(__name__)
@@ -201,7 +202,7 @@ class WebSocketServer:
 
         return res
 
-    async def handle_mq_message(self, ws, task_group_id: str, message):
+    async def handle_mq_message(self, ws_conn, task_group_id: str, message):
         """Handles new messages coming off of the RabbitMQ queue
 
         Parameters
@@ -236,14 +237,14 @@ class WebSocketServer:
                 # it is because the WebSocket connection has been closed. This means that
                 # either a ConnectionClosedOK exception should occur here, or a CancelledError
                 # should occur here. Regardless, the RabbitMQ message will be requeued safely
-                await ws.send(json.dumps(poll_result))
+                await ws_conn.send(json.dumps(poll_result))
         except Exception as e:
             logger.debug(f'Task {task_id} requeued due to exception')
             raise e
         else:
             logger.info('dispatched_to_user', extra=extra_logging)
 
-    async def mq_receive_task(self, ws, task_group_id: str):
+    async def mq_receive_task(self, ws_conn, task_group_id: str):
         """asyncio awaitable which handles expected exceptions from the
         RabbitMQ message handler
 
@@ -256,7 +257,7 @@ class WebSocketServer:
             Task group ID to wait for RabbitMQ messages on
         """
         try:
-            await self.mq_receive(ws, task_group_id)
+            await self.mq_receive(ws_conn, task_group_id)
         except CancelledError:
             logger.debug(f'Message consumer {task_group_id} stopped due to cancellation')
         except ConnectionClosedOK:
@@ -264,7 +265,7 @@ class WebSocketServer:
         except Exception as e:
             logger.exception(e)
 
-    async def mq_receive(self, ws, task_group_id: str):
+    async def mq_receive(self, ws_conn, task_group_id: str):
         """
         Receives completed tasks based on task_group_id on a RabbitMQ queue and sends them back
         to the user, after first confirming they own the task group they have requested
@@ -277,6 +278,7 @@ class WebSocketServer:
         task_group_id : str
             Task group ID to wait for RabbitMQ messages on
         """
+        ws = ws_conn.ws
         # confirm with the web service that this user can access this task_group_id
         headers = ws.request_headers
         task_group_info = await self.auth_client.authorize_task_group(headers, task_group_id)
@@ -305,9 +307,9 @@ class WebSocketServer:
                     # task has been cancelled externally, due to the WebSocket connection being
                     # closed.
                     async with message.process(requeue=True):
-                        await self.handle_mq_message(ws, task_group_id, message)
+                        await self.handle_mq_message(ws_conn, task_group_id, message)
 
-    def ws_message_consumer(self, ws, msg: str):
+    def ws_message_consumer(self, ws_conn, msg: str):
         """Consumer for incoming WebSocket messages
 
         Parameters
@@ -323,7 +325,7 @@ class WebSocketServer:
         asyncio.Task
             async Task to process incoming task updates based on the sent WebSocket message
         """
-        return self.loop.create_task(self.mq_receive_task(ws, msg))
+        return self.loop.create_task(self.mq_receive_task(ws_conn, msg))
 
     async def handle_connection(self, ws, path):
         """Handles new WebSocket connection by creating new asyncio task to process
@@ -338,17 +340,19 @@ class WebSocketServer:
             Path of request
         """
         logger.debug('New WebSocket connection created')
-        message_consumer_tasks = []
+        ws_conn = WebSocketConnection(ws)
+        check_idle_task = self.loop.create_task(ws_conn.check_idle())
+        conn_tasks = [check_idle_task]
         try:
             async for msg in ws:
-                message_consumer_tasks.append(self.ws_message_consumer(ws, msg))
+                conn_tasks.append(self.ws_message_consumer(ws_conn, msg))
         # this will likely happen from the connected client not calling
         # ws.close() to have a clean closing handshake
         except Exception as e:
             logger.debug(f'Connection closed with exception: {e}')
 
         logger.info('WebSocket connection closed, cancelling message consumers')
-        for task in message_consumer_tasks:
+        for task in conn_tasks:
             task.cancel()
 
     async def process_request(self, path, headers):
