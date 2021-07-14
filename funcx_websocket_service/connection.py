@@ -20,7 +20,8 @@ class WebSocketConnection:
             # if no messages are sent to this connection in a 10 minute
             # time span, close the connection
             if now - self.last_send_time > 10 * 60:
-                self.ws.close()
+                logger.debug('Closing WebSocket connection for being idle too long')
+                await self.ws.close()
                 return
 
             await asyncio.sleep(60)

@@ -202,13 +202,13 @@ class WebSocketServer:
 
         return res
 
-    async def handle_mq_message(self, ws_conn, task_group_id: str, message):
+    async def handle_mq_message(self, ws_conn: WebSocketConnection, task_group_id: str, message):
         """Handles new messages coming off of the RabbitMQ queue
 
         Parameters
         ----------
-        ws : WebSocket connection
-            Connection to send messages to
+        ws_conn : WebSocketConnection
+            WebSocket connection
 
         task_group_id : str
             Task group ID for the queue
@@ -244,14 +244,14 @@ class WebSocketServer:
         else:
             logger.info('dispatched_to_user', extra=extra_logging)
 
-    async def mq_receive_task(self, ws_conn, task_group_id: str):
+    async def mq_receive_task(self, ws_conn: WebSocketConnection, task_group_id: str):
         """asyncio awaitable which handles expected exceptions from the
         RabbitMQ message handler
 
         Parameters
         ----------
-        ws : WebSocket connection
-            Connection to send messages to
+        ws_conn : WebSocketConnection
+            WebSocket connection
 
         task_group_id : str
             Task group ID to wait for RabbitMQ messages on
@@ -265,15 +265,15 @@ class WebSocketServer:
         except Exception as e:
             logger.exception(e)
 
-    async def mq_receive(self, ws_conn, task_group_id: str):
+    async def mq_receive(self, ws_conn: WebSocketConnection, task_group_id: str):
         """
         Receives completed tasks based on task_group_id on a RabbitMQ queue and sends them back
         to the user, after first confirming they own the task group they have requested
 
         Parameters
         ----------
-        ws : WebSocket connection
-            Connection to send messages to
+        ws : WebSocketConnection
+            WebSocket connection
 
         task_group_id : str
             Task group ID to wait for RabbitMQ messages on
@@ -309,13 +309,13 @@ class WebSocketServer:
                     async with message.process(requeue=True):
                         await self.handle_mq_message(ws_conn, task_group_id, message)
 
-    def ws_message_consumer(self, ws_conn, msg: str):
+    def ws_message_consumer(self, ws_conn: WebSocketConnection, msg: str):
         """Consumer for incoming WebSocket messages
 
         Parameters
         ----------
-        ws : WebSocket connection
-            Connection that message is coming from
+        ws : WebSocketConnection
+            WebSocket connection
 
         msg : str
             Incoming message
