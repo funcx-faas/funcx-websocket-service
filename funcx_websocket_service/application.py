@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 import logging
 from funcx_websocket_service.server import WebSocketServer
@@ -51,4 +52,5 @@ def cli():
 
         WebSocketServer(REDIS_HOST, REDIS_PORT, RABBITMQ_HOST, WEB_SERVICE_URI)
     except Exception:
-        logger.exception('An exception occurred while starting the server')
+        logger.exception('Caught exception while starting server')
+        sys.exit(-1)
