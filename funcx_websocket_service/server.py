@@ -272,7 +272,7 @@ class WebSocketServer:
 
         Parameters
         ----------
-        ws : WebSocketConnection
+        ws_conn : WebSocketConnection
             WebSocket connection
 
         task_group_id : str
@@ -314,7 +314,7 @@ class WebSocketServer:
 
         Parameters
         ----------
-        ws : WebSocketConnection
+        ws_conn : WebSocketConnection
             WebSocket connection
 
         msg : str
