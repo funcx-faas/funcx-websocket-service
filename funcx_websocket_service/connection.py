@@ -11,15 +11,21 @@ class WebSocketConnection:
     object which is created by the server
     """
 
-    def __init__(self, ws):
+    def __init__(self, ws, idle_close_time: int = 10 * 60):
         """Initialize the WebSocket connection
 
         Parameters
         ----------
         ws : WebSocket
             WebSocket connection object created by websockets library
+
+        idle_close_time : int
+            Time in seconds to wait for this connection to be idle before
+            it is closed. Idle for n seconds mean that no outgoing message has
+            been sent to the WebSocket for n seconds
         """
         self.ws = ws
+        self.idle_close_time = idle_close_time
         self.last_send_time = time.time()
 
     async def send(self, msg: str):
@@ -43,7 +49,7 @@ class WebSocketConnection:
             now = time.time()
             # if no messages are sent to this connection in a 10 minute
             # time span, close the connection
-            if now - self.last_send_time > 10 * 60:
+            if now - self.last_send_time > self.idle_close_time:
                 logger.debug('Closing WebSocket connection for being idle too long')
                 await self.ws.close()
                 return
