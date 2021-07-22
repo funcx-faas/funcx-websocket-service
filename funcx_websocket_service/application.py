@@ -53,4 +53,7 @@ def cli():
         WebSocketServer(REDIS_HOST, REDIS_PORT, RABBITMQ_HOST, WEB_SERVICE_URI)
     except Exception:
         logger.exception('Caught exception while starting server')
+        # log env variables, as the vars that are passed in are likely the reason
+        # for server start failing
+        logger.critical(os.environ)
         sys.exit(-1)
