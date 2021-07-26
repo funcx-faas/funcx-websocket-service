@@ -225,7 +225,7 @@ class WebSocketServer:
             extra_logging = {
                 "task_id": task_id,
                 "task_group_id": task_group_id,
-                "task_transition": True
+                "type": "task_transition"
             }
             extra_logging.update(task_data)
 
