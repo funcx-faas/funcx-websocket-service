@@ -1,4 +1,4 @@
-aioredis
+aioredis>=2.0.0
 aiohttp
 websockets
 aio-pika
