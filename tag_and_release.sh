@@ -14,6 +14,13 @@ fi
 
 VERSION=$1
 
+SEMVER_REGEX="^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(\\-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+
+if [[ ! $VERSION =~ $SEMVER_REGEX ]]; then
+  echo "Version should be a nice Semantic Version String (https://semver.org)"
+  exit 1
+fi
+
 verify_version() {
   FUNCX_VERSION=$(python3 -c "import funcx_websocket_service.version; print(funcx_websocket_service.version.VERSION)")
 
@@ -24,19 +31,18 @@ verify_version() {
       echo "Updating version.py to match release"
       sed "s/^VERSION *= *'.*'/VERSION = '$VERSION'/" funcx_websocket_service/version.py > funcx_websocket_service/version.py.bak
       mv  funcx_websocket_service/version.py.bak funcx_websocket_service/version.py
-      git status
   fi
 }
 
 
 create_release_branch () {
     echo "Creating branch"
-    git checkout -b "$VERSION"
+    git checkout -b "v$VERSION"
     git add funcx_websocket_service/version.py
     git commit -m "Update to version $VERSION"
 
     echo "Pushing branch"
-    git push origin "$VERSION"
+    git push origin "v$VERSION"
 }
 
 
