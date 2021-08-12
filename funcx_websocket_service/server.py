@@ -60,64 +60,16 @@ class WebSocketServer:
         logger.info(f'WebSocket Server started on port {self.ws_port}')
         self.loop.run_forever()
 
-    async def get_redis_client(self):
-        """Gets redis client using provided redis host and port for this server
+    def get_redis(self):
+        """Gets redis instance using provided redis host and port for this server
 
         Returns
         -------
-        aioredis.Redis
-            Default asyncio redis client
+        Redis instance
         """
-        redis_client = await aioredis.create_redis((self.redis_host, self.redis_port))
-        return redis_client
-
-    async def redis_hget(self, rc: aioredis.Redis, hname: str, key: str):
-        """Async redis hget that converts result to a string
-
-        Parameters
-        ----------
-        rc : aioredis.Redis
-            Async redis client to use for querying
-
-        hname : str
-            Hash name for query
-
-        key : str
-            key to query
-
-        Returns
-        -------
-        str
-            Resulting value of query
-        """
-        value = await rc.hget(hname, key)
-        if value:
-            value = value.decode('utf-8')
-        return value
-
-    async def redis_hmget(self, rc: aioredis.Redis, hname: str, keys):
-        """Async redis hmget that converts results to strings
-
-        Parameters
-        ----------
-        rc : aioredis.Redis
-            Async redis client to use for querying
-
-        hname : str
-            Hash name for query
-
-        keys : List of str
-            List of keys to query
-
-        Returns
-        -------
-        List of str
-            List of str values corresponding to the keys
-        """
-        values = await rc.hmget(hname, *keys)
-        if values:
-            values = list(map(lambda v: v.decode('utf-8'), values))
-        return values
+        url = f"redis://{self.redis_host}:{self.redis_port}"
+        redis = aioredis.from_url(url, encoding="utf-8", decode_responses=True)
+        return redis
 
     async def get_task_data(self, rc: aioredis.Redis, task_id: str):
         """Gets additional useful properties about a task
@@ -149,7 +101,7 @@ class WebSocketServer:
         if not exists:
             return empty_dict
 
-        values = await self.redis_hmget(rc, task_hname, keys)
+        values = await rc.hmget(task_hname, keys)
         if not values:
             return empty_dict
 
@@ -182,15 +134,15 @@ class WebSocketServer:
                 'reason': 'Unknown task id'
             }
 
-        task_result = await self.redis_hget(rc, task_hname, 'result')
-        task_exception = await self.redis_hget(rc, task_hname, 'exception')
+        task_result = await rc.hget(task_hname, 'result')
+        task_exception = await rc.hget(task_hname, 'exception')
         if task_result is None and task_exception is None:
             return None
 
         # TODO: delete task from redis
 
-        task_status = await self.redis_hget(rc, task_hname, 'status')
-        task_completion_t = await self.redis_hget(rc, task_hname, 'completion_time')
+        task_status = await rc.hget(task_hname, 'status')
+        task_completion_t = await rc.hget(task_hname, 'completion_time')
 
         res = {
             'task_id': task_id,
@@ -217,30 +169,33 @@ class WebSocketServer:
             Message containing data sent through the queue
         """
         extra_logging = None
+        task_id = message.body.decode('utf-8')
         try:
-            rc = await self.get_redis_client()
-            task_id = message.body.decode('utf-8')
+            redis = self.get_redis()
 
-            task_data = await self.get_task_data(rc, task_id)
-            extra_logging = {
-                "task_id": task_id,
-                "task_group_id": task_group_id,
-                "log_type": "task_transition"
-            }
-            extra_logging.update(task_data)
+            async with redis.client() as rc:
+                task_data = await self.get_task_data(rc, task_id)
+                extra_logging = {
+                    "task_id": task_id,
+                    "task_group_id": task_group_id,
+                    "log_type": "task_transition"
+                }
+                extra_logging.update(task_data)
 
-            poll_result = await self.poll_task(rc, task_id)
-            rc.close()
-            await rc.wait_closed()
+                poll_result = await self.poll_task(rc, task_id)
+
             if poll_result:
                 # If the asyncio task is cancelled when a WebSocket message is being sent,
                 # it is because the WebSocket connection has been closed. This means that
                 # either a ConnectionClosedOK exception should occur here, or a CancelledError
                 # should occur here. Regardless, the RabbitMQ message will be requeued safely
                 await ws_conn.send(json.dumps(poll_result))
-        except Exception as e:
-            logger.debug(f'Task {task_id} requeued due to exception')
-            raise e
+        except Exception:
+            logger.debug(f'Task {task_id} requeued due to exception', extra={
+                "log_type": "task_requeued_rabbitmq",
+                "task_id": task_id
+            })
+            raise
         else:
             logger.info('dispatched_to_user', extra=extra_logging)
 
