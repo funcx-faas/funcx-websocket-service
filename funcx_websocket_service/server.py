@@ -60,7 +60,7 @@ class WebSocketServer:
         logger.info(f'WebSocket Server started on port {self.ws_port}')
         self.loop.run_forever()
 
-    async def get_redis(self):
+    def get_redis(self):
         """Gets redis instance using provided redis host and port for this server
 
         Returns
@@ -171,7 +171,7 @@ class WebSocketServer:
         extra_logging = None
         task_id = message.body.decode('utf-8')
         try:
-            redis = await self.get_redis()
+            redis = self.get_redis()
 
             async with redis.client() as rc:
                 task_data = await self.get_task_data(rc, task_id)
