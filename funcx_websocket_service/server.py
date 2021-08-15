@@ -24,7 +24,7 @@ class WebSocketServer:
         self,
         redis_host: str,
         redis_port: str,
-        rabbitmq_host: str,
+        rabbitmq_uri: str,
         web_service_uri: str
     ):
         """Initialize and run the server
@@ -37,15 +37,15 @@ class WebSocketServer:
         redis_port : str
             Redis port
 
-        rabbitmq_host : str
-            RabbitMQ host
+        rabbitmq_uri : str
+            RabbitMQ uri
 
         web_service_uri : str
             Web Service URI to use, likely an internal k8s DNS name
         """
         self.redis_host = redis_host
         self.redis_port = redis_port
-        self.rabbitmq_host = rabbitmq_host
+        self.rabbitmq_uri = rabbitmq_uri
         self.funcx_service_address = f'{web_service_uri}/v2'
         logger.info(f"funcx_service_address : {self.funcx_service_address}")
         self.auth_client = AuthClient(self.funcx_service_address)
@@ -242,8 +242,7 @@ class WebSocketServer:
 
         logger.debug(f'Message consumer {task_group_id} started')
 
-        uri = f'amqp://funcx:rabbitmq@{self.rabbitmq_host}/'
-        mq_connection = await aio_pika.connect_robust(uri, loop=self.loop)
+        mq_connection = await aio_pika.connect_robust(self.rabbitmq_uri, loop=self.loop)
 
         async with mq_connection:
             channel = await mq_connection.channel()
