@@ -71,6 +71,21 @@ class WebSocketServer:
         redis = aioredis.from_url(url, encoding="utf-8", decode_responses=True)
         return redis
 
+    def get_task_hname(self, task_id: str):
+        """Get redis task hname given task ID
+
+        Parameters
+        ----------
+        task_id : str
+            Task ID
+
+        Returns
+        -------
+        str
+            Task hname
+        """
+        return f'task_{task_id}'
+
     async def get_task_data(self, rc: aioredis.Redis, task_id: str):
         """Gets additional useful properties about a task
         (user_id, function_id, etc.)
@@ -88,7 +103,7 @@ class WebSocketServer:
         Dict
             Task data values
         """
-        task_hname = f'task_{task_id}'
+        task_hname = self.get_task_hname(task_id)
         exists = await rc.exists(task_hname)
 
         # these are the keys we need to pull from the redis task object
@@ -125,7 +140,7 @@ class WebSocketServer:
         None: if task exists in redis but is not complete
         Dict of task status: if task is not found or is complete
         """
-        task_hname = f'task_{task_id}'
+        task_hname = self.get_task_hname(task_id)
         exists = await rc.exists(task_hname)
         if not exists:
             return {
@@ -139,8 +154,6 @@ class WebSocketServer:
         if task_result is None and task_exception is None:
             return None
 
-        # TODO: delete task from redis
-
         task_status = await rc.hget(task_hname, 'status')
         task_completion_t = await rc.hget(task_hname, 'completion_time')
 
@@ -153,6 +166,20 @@ class WebSocketServer:
         }
 
         return res
+
+    async def delete_redis_task(self, rc: aioredis.Redis, task_id: str):
+        """Deletes task from redis
+
+        Parameters
+        ----------
+        rc : aioredis.Redis
+            Async redis client
+
+        task_id : str
+            Task ID to delete
+        """
+        task_hname = self.get_task_hname(task_id)
+        await rc.delete(task_hname)
 
     async def handle_mq_message(self, ws_conn: WebSocketConnection, task_group_id: str, message):
         """Handles new messages coming off of the RabbitMQ queue
@@ -183,6 +210,9 @@ class WebSocketServer:
                 extra_logging.update(task_data)
 
                 poll_result = await self.poll_task(rc, task_id)
+
+                # delete redis task when we are done retrieving info
+                await self.delete_redis_task(rc, task_id)
 
             if poll_result:
                 # If the asyncio task is cancelled when a WebSocket message is being sent,
