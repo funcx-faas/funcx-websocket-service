@@ -211,9 +211,6 @@ class WebSocketServer:
 
                 poll_result = await self.poll_task(rc, task_id)
 
-                # delete redis task when we are done retrieving info
-                await self.delete_redis_task(rc, task_id)
-
             if poll_result:
                 # If the asyncio task is cancelled when a WebSocket message is being sent,
                 # it is because the WebSocket connection has been closed. This means that
@@ -228,6 +225,17 @@ class WebSocketServer:
             raise
         else:
             logger.info('dispatched_to_user', extra=extra_logging)
+            # This is wrapped around a try-block because while deleting the task is
+            # important for saving space in redis, it is not critical for allowing the
+            # user to get the result. Thus, the task should not be requeued on RabbitMQ
+            # if deletion fails, since we know the result already reached the user
+            try:
+                logger.debug(f'Deleting task {task_id} from redis')
+                redis = self.get_redis()
+                async with redis.client() as rc:
+                    await self.delete_redis_task(rc, task_id)
+            except Exception:
+                logger.exception(f'Caught exception while trying to delete redis task {task_id}, so task was not deleted')
 
     async def mq_receive_task(self, ws_conn: WebSocketConnection, task_group_id: str):
         """asyncio awaitable which handles expected exceptions from the
