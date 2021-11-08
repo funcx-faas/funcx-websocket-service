@@ -3,6 +3,7 @@ import json
 import logging
 import websockets
 import aioredis
+import redis
 import aio_pika
 import http
 from concurrent.futures import CancelledError
@@ -10,6 +11,8 @@ from websockets.exceptions import ConnectionClosedOK
 from funcx_websocket_service.auth import AuthClient
 from funcx_websocket_service.connection import WebSocketConnection
 from funcx_websocket_service.version import VERSION, MIN_SDK_VERSION
+from funcx_websocket_service.tasks import RedisTask
+from funcx_common.task_storage.s3 import RedisS3Storage
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,9 @@ class WebSocketServer:
         redis_host: str,
         redis_port: str,
         rabbitmq_uri: str,
-        web_service_uri: str
+        web_service_uri: str,
+        s3_bucket_name: str,
+        redis_storage_threshold: int
     ):
         """Initialize and run the server
 
@@ -42,6 +47,12 @@ class WebSocketServer:
 
         web_service_uri : str
             Web Service URI to use, likely an internal k8s DNS name
+
+        s3_bucket_name : str
+            Name of S3 bucket where results could be stored
+
+        redis_storage_threshold : int
+            Redis max storage threshold size for results
         """
         self.redis_host = redis_host
         self.redis_port = redis_port
@@ -49,6 +60,9 @@ class WebSocketServer:
         self.funcx_service_address = f'{web_service_uri}/v2'
         logger.info(f"funcx_service_address : {self.funcx_service_address}")
         self.auth_client = AuthClient(self.funcx_service_address)
+
+        self.sync_redis_client = None
+        self.task_storage = RedisS3Storage(s3_bucket_name, redis_threshold=redis_storage_threshold)
 
         self.loop = asyncio.get_event_loop()
 
@@ -60,8 +74,8 @@ class WebSocketServer:
         logger.info(f'WebSocket Server started on port {self.ws_port}')
         self.loop.run_forever()
 
-    def get_redis(self):
-        """Gets redis instance using provided redis host and port for this server
+    def get_async_redis(self):
+        """Gets async redis instance using provided redis host and port for this server
 
         Returns
         -------
@@ -70,6 +84,29 @@ class WebSocketServer:
         url = f"redis://{self.redis_host}:{self.redis_port}"
         redis = aioredis.from_url(url, encoding="utf-8", decode_responses=True)
         return redis
+
+    def get_sync_redis(self):
+        """Return sync redis client
+
+        Returns
+        -------
+        redis.StrictRedis
+            A client for redis
+        """
+        if self.sync_redis_client is not None:
+            return self.sync_redis_client
+
+        try:
+            redis_client = redis.StrictRedis(
+                host=self.redis_host,
+                port=self.redis_port,
+                decode_responses=True,
+            )
+            self.sync_redis_client = redis_client
+            return redis_client
+        except Exception as e:
+            logger.exception("Failed to initialize sync redis client")
+            raise e
 
     def get_task_hname(self, task_id: str):
         """Get redis task hname given task ID
@@ -85,6 +122,23 @@ class WebSocketServer:
             Task hname
         """
         return f'task_{task_id}'
+
+    def get_task_result_sync(self, task_id: str):
+        """Get task result synchronously
+
+        Parameters
+        ----------
+        task_id : str
+            Task ID
+
+        Returns
+        -------
+        Results result if available, else returns None
+        """
+        logger.debug(f"Getting task result for {task_id} in thread")
+        rc = self.get_sync_redis()
+        task = RedisTask(rc, task_id)
+        return self.task_storage.get_result(task)
 
     async def get_task_data(self, rc: aioredis.Redis, task_id: str):
         """Gets additional useful properties about a task
@@ -149,7 +203,7 @@ class WebSocketServer:
                 'reason': 'Unknown task id'
             }
 
-        task_result = await rc.hget(task_hname, 'result')
+        task_result = await asyncio.to_thread(self.get_task_result_sync, task_id)
         task_exception = await rc.hget(task_hname, 'exception')
         if task_result is None and task_exception is None:
             return None
@@ -198,7 +252,7 @@ class WebSocketServer:
         extra_logging = None
         task_id = message.body.decode('utf-8')
         try:
-            redis = self.get_redis()
+            redis = self.get_async_redis()
 
             async with redis.client() as rc:
                 task_data = await self.get_task_data(rc, task_id)
@@ -231,7 +285,7 @@ class WebSocketServer:
             # if deletion fails, since we know the result already reached the user
             try:
                 logger.debug(f'Deleting task {task_id} from redis')
-                redis = self.get_redis()
+                redis = self.get_async_redis()
                 async with redis.client() as rc:
                     await self.delete_redis_task(rc, task_id)
             except Exception:
