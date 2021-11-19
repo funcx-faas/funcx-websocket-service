@@ -37,13 +37,12 @@ def cli():
 
         WEB_SERVICE_URI = os.environ.get('WEB_SERVICE_URI')
 
-        S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
-        S3_BUCKET_NAME = 'funcx-test-1'
+        FUNCX_S3_BUCKET_NAME = os.environ.get('FUNCX_S3_BUCKET_NAME')
 
-        if not S3_BUCKET_NAME:
-            raise Exception("S3 Storage bucket is required. Please specify by setting env variable `S3_BUCKET_NAME`")
+        if not FUNCX_S3_BUCKET_NAME:
+            raise Exception("S3 Storage bucket is required. Please specify by setting env variable `FUNCX_S3_BUCKET_NAME`")
 
-        REDIS_STORAGE_THRESHOLD = os.environ.get('REDIS_STORAGE_THRESHOLD', 20000)
+        FUNCX_REDIS_STORAGE_THRESHOLD = int(os.environ.get('FUNCX_REDIS_STORAGE_THRESHOLD', 20000))
 
         if REDIS_HOST is None:
             REDIS_HOST = '127.0.0.1'
@@ -57,7 +56,7 @@ def cli():
         logger.info('Starting WebSocket Server')
         logger.debug(f'Using redis host: {REDIS_HOST}, redis port: {REDIS_PORT}, RabbitMQ uri: {RABBITMQ_URI}, web service URI: {WEB_SERVICE_URI}')
 
-        WebSocketServer(REDIS_HOST, REDIS_PORT, RABBITMQ_URI, WEB_SERVICE_URI, S3_BUCKET_NAME, REDIS_STORAGE_THRESHOLD)
+        WebSocketServer(REDIS_HOST, REDIS_PORT, RABBITMQ_URI, WEB_SERVICE_URI, FUNCX_S3_BUCKET_NAME, FUNCX_REDIS_STORAGE_THRESHOLD)
     except Exception:
         logger.exception('Caught exception while starting server')
         # log env variables, as the vars that are passed in are likely the reason
