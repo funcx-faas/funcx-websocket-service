@@ -203,7 +203,7 @@ class WebSocketServer:
                 'reason': 'Unknown task id'
             }
 
-        task_result = await asyncio.to_thread(self.get_task_result_sync, task_id)
+        task_result = await self.loop.run_in_executor(None, self.get_task_result_sync, task_id)
         task_exception = await rc.hget(task_hname, 'exception')
         if task_result is None and task_exception is None:
             return None

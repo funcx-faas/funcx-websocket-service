@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.7
 
 # Create a group and user
 RUN addgroup websocket-service && useradd -g websocket-service websocket-service
