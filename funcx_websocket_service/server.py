@@ -62,7 +62,9 @@ class WebSocketServer:
         self.auth_client = AuthClient(self.funcx_service_address)
 
         self.sync_redis_client = None
-        self.task_storage = RedisS3Storage(s3_bucket_name, redis_threshold=redis_storage_threshold)
+        self.s3_bucket_name = s3_bucket_name
+        self.redis_storage_threshold = redis_storage_threshold
+        self.task_storage = None
 
         self.loop = asyncio.get_event_loop()
 
@@ -73,6 +75,14 @@ class WebSocketServer:
         self.loop.run_until_complete(start_server)
         logger.info(f'WebSocket Server started on port {self.ws_port}')
         self.loop.run_forever()
+
+    def get_storage(self):
+        if self.s3_bucket_name is None:
+            return None
+
+        if self.task_storage is None:
+            self.task_storage = RedisS3Storage(self.s3_bucket_name, redis_threshold=self.redis_storage_threshold)
+        return self.task_storage
 
     def get_async_redis(self):
         """Gets async redis instance using provided redis host and port for this server
@@ -138,7 +148,11 @@ class WebSocketServer:
         logger.debug(f"Getting task result for {task_id} in thread")
         rc = self.get_sync_redis()
         task = RedisTask(rc, task_id)
-        return self.task_storage.get_result(task)
+        storage = self.get_storage()
+        if storage is None:
+            return task.result
+        else:
+            return storage.get_result(task)
 
     async def get_task_data(self, rc: aioredis.Redis, task_id: str):
         """Gets additional useful properties about a task

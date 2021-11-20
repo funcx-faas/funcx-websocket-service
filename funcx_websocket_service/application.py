@@ -39,9 +39,6 @@ def cli():
 
         FUNCX_S3_BUCKET_NAME = os.environ.get('FUNCX_S3_BUCKET_NAME')
 
-        if not FUNCX_S3_BUCKET_NAME:
-            raise Exception("S3 Storage bucket is required. Please specify by setting env variable `FUNCX_S3_BUCKET_NAME`")
-
         FUNCX_REDIS_STORAGE_THRESHOLD = int(os.environ.get('FUNCX_REDIS_STORAGE_THRESHOLD', 20000))
 
         if REDIS_HOST is None:
