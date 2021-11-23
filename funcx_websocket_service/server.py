@@ -2,14 +2,17 @@ import asyncio
 import http
 import json
 import logging
+import typing as t
 from concurrent.futures import CancelledError
 
 import aio_pika
 import aioredis
 import redis
-import websockets
 from funcx_common.task_storage import get_default_task_storage
 from websockets.exceptions import ConnectionClosedOK
+
+# see: https://github.com/aaugustin/websockets/issues/940
+from websockets.server import serve as websockets_serve
 
 from funcx_websocket_service.auth import AuthClient
 from funcx_websocket_service.connection import WebSocketConnection
@@ -68,7 +71,7 @@ class WebSocketServer:
 
         self.ws_port = 6000
 
-        start_server = websockets.serve(
+        start_server = websockets_serve(
             self.handle_connection,
             "0.0.0.0",
             self.ws_port,
@@ -351,7 +354,9 @@ class WebSocketServer:
 
         logger.debug(f"Message consumer {task_group_id} started")
 
-        mq_connection = await aio_pika.connect_robust(self.rabbitmq_uri, loop=self.loop)
+        mq_connection: t.Any = await aio_pika.connect_robust(
+            self.rabbitmq_uri, loop=self.loop
+        )
 
         async with mq_connection:
             channel = await mq_connection.channel()

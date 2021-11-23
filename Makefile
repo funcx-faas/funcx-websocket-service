@@ -2,4 +2,4 @@
 test:
 	tox
 lint:
-	tox -e lint
+	tox -e lint,mypy
