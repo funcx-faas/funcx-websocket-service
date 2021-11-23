@@ -54,7 +54,8 @@ def cli():
 
         logger.info("Starting WebSocket Server")
         logger.debug(
-            f"Using redis host: {REDIS_HOST}, redis port: {REDIS_PORT}, RabbitMQ uri: {RABBITMQ_URI}, web service URI: {WEB_SERVICE_URI}"
+            f"Using redis host: {REDIS_HOST}, redis port: {REDIS_PORT}, "
+            f"RabbitMQ uri: {RABBITMQ_URI}, web service URI: {WEB_SERVICE_URI}"
         )
 
         WebSocketServer(

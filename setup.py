@@ -22,7 +22,8 @@ setup(
     name="funcx_websocket_service",
     version=version,
     packages=find_packages(),
-    description="funcX WebSocket Service: High Performance Function Serving for Science",
+    description="funcX WebSocket Service: "
+    "High Performance Function Serving for Science",
     install_requires=REQUIRES,
     python_requires=">=3.6",
     classifiers=[

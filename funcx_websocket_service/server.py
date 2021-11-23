@@ -289,10 +289,11 @@ class WebSocketServer:
                 poll_result = await self.poll_task(rc, task_id)
 
             if poll_result:
-                # If the asyncio task is cancelled when a WebSocket message is being sent,
-                # it is because the WebSocket connection has been closed. This means that
-                # either a ConnectionClosedOK exception should occur here, or a CancelledError
-                # should occur here. Regardless, the RabbitMQ message will be requeued safely
+                # If the asyncio task is cancelled when a WebSocket message is being
+                # sent, it is because the WebSocket connection has been closed. This
+                # means that either a ConnectionClosedOK exception should occur here, or
+                # a CancelledError should occur here. Regardless, the RabbitMQ message
+                # will be requeued safely
                 await ws_conn.send(json.dumps(poll_result))
         except Exception:
             logger.debug(
@@ -313,7 +314,8 @@ class WebSocketServer:
                     await self.delete_redis_task(rc, task_id)
             except Exception:
                 logger.exception(
-                    f"Caught exception while trying to delete redis task {task_id}, so task was not deleted"
+                    f"Caught exception while trying to delete redis task {task_id}, "
+                    "so task was not deleted"
                 )
 
     async def mq_receive_task(self, ws_conn: WebSocketConnection, task_group_id: str):
@@ -336,15 +338,17 @@ class WebSocketServer:
             )
         except ConnectionClosedOK:
             logger.debug(
-                f"Message consumer {task_group_id} stopped due to WebSocket connection close"
+                f"Message consumer {task_group_id} stopped due to WebSocket "
+                "connection close"
             )
         except Exception as e:
             logger.exception(e)
 
     async def mq_receive(self, ws_conn: WebSocketConnection, task_group_id: str):
         """
-        Receives completed tasks based on task_group_id on a RabbitMQ queue and sends them back
-        to the user, after first confirming they own the task group they have requested
+        Receives completed tasks based on task_group_id on a RabbitMQ queue and sends
+        them back to the user, after first confirming they own the task group they have
+        requested
 
         Parameters
         ----------
@@ -376,15 +380,16 @@ class WebSocketServer:
             await queue.bind(exchange, routing_key=task_group_id)
 
             async with queue.iterator() as queue_iter:
-                # If the asyncio task is cancelled when no previous queue message is being processed,
-                # a CancelledError will occur here allowing a clean exit from the asyncio task
+                # If the asyncio task is cancelled when no previous queue message is
+                # being processed, a CancelledError will occur here allowing a clean
+                # exit from the asyncio task
                 async for message in queue_iter:
-                    # Setting requeue to True indicates that if an exception occurs within this
-                    # context manager, the message should be requeued. This is useful because it
-                    # allows requeueing of RabbitMQ messages that are not successfully sent over
-                    # the WebSocket connection. Usually this is because this async message handler
-                    # task has been cancelled externally, due to the WebSocket connection being
-                    # closed.
+                    # Setting requeue to True indicates that if an exception occurs
+                    # within this context manager, the message should be requeued. This
+                    # is useful because it allows requeueing of RabbitMQ messages that
+                    # are not successfully sent over the WebSocket connection. Usually
+                    # this is because this async message handler task has been cancelled
+                    # externally, due to the WebSocket connection being closed.
                     async with message.process(requeue=True):
                         await self.handle_mq_message(ws_conn, task_group_id, message)
 
@@ -402,7 +407,8 @@ class WebSocketServer:
         Returns
         -------
         asyncio.Task
-            async Task to process incoming task updates based on the sent WebSocket message
+            async Task to process incoming task updates based on the sent WebSocket
+            message
         """
         return self.loop.create_task(self.mq_receive_task(ws_conn, msg))
 
