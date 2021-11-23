@@ -1,18 +1,20 @@
 import asyncio
+import http
 import json
 import logging
-import websockets
+from concurrent.futures import CancelledError
+
+import aio_pika
 import aioredis
 import redis
-import aio_pika
-import http
-from concurrent.futures import CancelledError
+import websockets
+from funcx_common.task_storage.s3 import RedisS3Storage
 from websockets.exceptions import ConnectionClosedOK
+
 from funcx_websocket_service.auth import AuthClient
 from funcx_websocket_service.connection import WebSocketConnection
-from funcx_websocket_service.version import VERSION, MIN_SDK_VERSION
 from funcx_websocket_service.tasks import RedisTask
-from funcx_common.task_storage.s3 import RedisS3Storage
+from funcx_websocket_service.version import MIN_SDK_VERSION, VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ class WebSocketServer:
         rabbitmq_uri: str,
         web_service_uri: str,
         s3_bucket_name: str,
-        redis_storage_threshold: int
+        redis_storage_threshold: int,
     ):
         """Initialize and run the server
 
@@ -57,7 +59,7 @@ class WebSocketServer:
         self.redis_host = redis_host
         self.redis_port = redis_port
         self.rabbitmq_uri = rabbitmq_uri
-        self.funcx_service_address = f'{web_service_uri}/v2'
+        self.funcx_service_address = f"{web_service_uri}/v2"
         logger.info(f"funcx_service_address : {self.funcx_service_address}")
         self.auth_client = AuthClient(self.funcx_service_address)
 
@@ -70,10 +72,15 @@ class WebSocketServer:
 
         self.ws_port = 6000
 
-        start_server = websockets.serve(self.handle_connection, '0.0.0.0', self.ws_port, process_request=self.process_request)
+        start_server = websockets.serve(
+            self.handle_connection,
+            "0.0.0.0",
+            self.ws_port,
+            process_request=self.process_request,
+        )
 
         self.loop.run_until_complete(start_server)
-        logger.info(f'WebSocket Server started on port {self.ws_port}')
+        logger.info(f"WebSocket Server started on port {self.ws_port}")
         self.loop.run_forever()
 
     def get_storage(self):
@@ -81,7 +88,9 @@ class WebSocketServer:
             return None
 
         if self.task_storage is None:
-            self.task_storage = RedisS3Storage(self.s3_bucket_name, redis_threshold=self.redis_storage_threshold)
+            self.task_storage = RedisS3Storage(
+                self.s3_bucket_name, redis_threshold=self.redis_storage_threshold
+            )
         return self.task_storage
 
     def get_async_redis(self):
@@ -131,7 +140,7 @@ class WebSocketServer:
         str
             Task hname
         """
-        return f'task_{task_id}'
+        return f"task_{task_id}"
 
     def get_task_result_sync(self, task_id: str):
         """Get task result synchronously
@@ -175,10 +184,10 @@ class WebSocketServer:
         exists = await rc.exists(task_hname)
 
         # these are the keys we need to pull from the redis task object
-        keys = ['user_id', 'function_id', 'endpoint', 'container']
+        keys = ["user_id", "function_id", "endpoint", "container"]
         # these are the keys we want to assign to the results in a dict,
         # in the same order as the keys we are fetching above
-        final_keys = ['user_id', 'function_id', 'endpoint_id', 'container_id']
+        final_keys = ["user_id", "function_id", "endpoint_id", "container_id"]
 
         empty_dict = dict.fromkeys(final_keys, None)
         if not exists:
@@ -189,7 +198,7 @@ class WebSocketServer:
             return empty_dict
 
         res = dict(zip(final_keys, values))
-        res['user_id'] = int(res['user_id'])
+        res["user_id"] = int(res["user_id"])
         return res
 
     async def poll_task(self, rc: aioredis.Redis, task_id: str):
@@ -211,26 +220,24 @@ class WebSocketServer:
         task_hname = self.get_task_hname(task_id)
         exists = await rc.exists(task_hname)
         if not exists:
-            return {
-                'task_id': task_id,
-                'status': 'Failed',
-                'reason': 'Unknown task id'
-            }
+            return {"task_id": task_id, "status": "Failed", "reason": "Unknown task id"}
 
-        task_result = await self.loop.run_in_executor(None, self.get_task_result_sync, task_id)
-        task_exception = await rc.hget(task_hname, 'exception')
+        task_result = await self.loop.run_in_executor(
+            None, self.get_task_result_sync, task_id
+        )
+        task_exception = await rc.hget(task_hname, "exception")
         if task_result is None and task_exception is None:
             return None
 
-        task_status = await rc.hget(task_hname, 'status')
-        task_completion_t = await rc.hget(task_hname, 'completion_time')
+        task_status = await rc.hget(task_hname, "status")
+        task_completion_t = await rc.hget(task_hname, "completion_time")
 
         res = {
-            'task_id': task_id,
-            'status': task_status,
-            'result': task_result,
-            'completion_t': task_completion_t,
-            'exception': task_exception
+            "task_id": task_id,
+            "status": task_status,
+            "result": task_result,
+            "completion_t": task_completion_t,
+            "exception": task_exception,
         }
 
         return res
@@ -249,7 +256,9 @@ class WebSocketServer:
         task_hname = self.get_task_hname(task_id)
         await rc.delete(task_hname)
 
-    async def handle_mq_message(self, ws_conn: WebSocketConnection, task_group_id: str, message):
+    async def handle_mq_message(
+        self, ws_conn: WebSocketConnection, task_group_id: str, message
+    ):
         """Handles new messages coming off of the RabbitMQ queue
 
         Parameters
@@ -264,7 +273,7 @@ class WebSocketServer:
             Message containing data sent through the queue
         """
         extra_logging = None
-        task_id = message.body.decode('utf-8')
+        task_id = message.body.decode("utf-8")
         try:
             redis = self.get_async_redis()
 
@@ -273,37 +282,41 @@ class WebSocketServer:
                 extra_logging = {
                     "task_id": task_id,
                     "task_group_id": task_group_id,
-                    "log_type": "task_transition"
+                    "log_type": "task_transition",
                 }
                 extra_logging.update(task_data)
 
                 poll_result = await self.poll_task(rc, task_id)
 
             if poll_result:
-                # If the asyncio task is cancelled when a WebSocket message is being sent,
-                # it is because the WebSocket connection has been closed. This means that
-                # either a ConnectionClosedOK exception should occur here, or a CancelledError
-                # should occur here. Regardless, the RabbitMQ message will be requeued safely
+                # If the asyncio task is cancelled when a WebSocket message is being
+                # sent, it is because the WebSocket connection has been closed. This
+                # means that either a ConnectionClosedOK exception should occur here, or
+                # a CancelledError should occur here. Regardless, the RabbitMQ message
+                # will be requeued safely
                 await ws_conn.send(json.dumps(poll_result))
         except Exception:
-            logger.debug(f'Task {task_id} requeued due to exception', extra={
-                "log_type": "task_requeued_rabbitmq",
-                "task_id": task_id
-            })
+            logger.debug(
+                f"Task {task_id} requeued due to exception",
+                extra={"log_type": "task_requeued_rabbitmq", "task_id": task_id},
+            )
             raise
         else:
-            logger.info('dispatched_to_user', extra=extra_logging)
+            logger.info("dispatched_to_user", extra=extra_logging)
             # This is wrapped around a try-block because while deleting the task is
             # important for saving space in redis, it is not critical for allowing the
             # user to get the result. Thus, the task should not be requeued on RabbitMQ
             # if deletion fails, since we know the result already reached the user
             try:
-                logger.debug(f'Deleting task {task_id} from redis')
+                logger.debug(f"Deleting task {task_id} from redis")
                 redis = self.get_async_redis()
                 async with redis.client() as rc:
                     await self.delete_redis_task(rc, task_id)
             except Exception:
-                logger.exception(f'Caught exception while trying to delete redis task {task_id}, so task was not deleted')
+                logger.exception(
+                    f"Caught exception while trying to delete redis task {task_id}, "
+                    "so task was not deleted"
+                )
 
     async def mq_receive_task(self, ws_conn: WebSocketConnection, task_group_id: str):
         """asyncio awaitable which handles expected exceptions from the
@@ -320,16 +333,22 @@ class WebSocketServer:
         try:
             await self.mq_receive(ws_conn, task_group_id)
         except CancelledError:
-            logger.debug(f'Message consumer {task_group_id} stopped due to cancellation')
+            logger.debug(
+                f"Message consumer {task_group_id} stopped due to cancellation"
+            )
         except ConnectionClosedOK:
-            logger.debug(f'Message consumer {task_group_id} stopped due to WebSocket connection close')
+            logger.debug(
+                f"Message consumer {task_group_id} stopped due to WebSocket "
+                "connection close"
+            )
         except Exception as e:
             logger.exception(e)
 
     async def mq_receive(self, ws_conn: WebSocketConnection, task_group_id: str):
         """
-        Receives completed tasks based on task_group_id on a RabbitMQ queue and sends them back
-        to the user, after first confirming they own the task group they have requested
+        Receives completed tasks based on task_group_id on a RabbitMQ queue and sends
+        them back to the user, after first confirming they own the task group they have
+        requested
 
         Parameters
         ----------
@@ -342,30 +361,35 @@ class WebSocketServer:
         ws = ws_conn.ws
         # confirm with the web service that this user can access this task_group_id
         headers = ws.request_headers
-        task_group_info = await self.auth_client.authorize_task_group(headers, task_group_id)
+        task_group_info = await self.auth_client.authorize_task_group(
+            headers, task_group_id
+        )
         if not task_group_info:
             return
 
-        logger.debug(f'Message consumer {task_group_id} started')
+        logger.debug(f"Message consumer {task_group_id} started")
 
         mq_connection = await aio_pika.connect_robust(self.rabbitmq_uri, loop=self.loop)
 
         async with mq_connection:
             channel = await mq_connection.channel()
-            exchange = await channel.declare_exchange('tasks', aio_pika.ExchangeType.DIRECT)
+            exchange = await channel.declare_exchange(
+                "tasks", aio_pika.ExchangeType.DIRECT
+            )
             queue = await channel.declare_queue(task_group_id)
             await queue.bind(exchange, routing_key=task_group_id)
 
             async with queue.iterator() as queue_iter:
-                # If the asyncio task is cancelled when no previous queue message is being processed,
-                # a CancelledError will occur here allowing a clean exit from the asyncio task
+                # If the asyncio task is cancelled when no previous queue message is
+                # being processed, a CancelledError will occur here allowing a clean
+                # exit from the asyncio task
                 async for message in queue_iter:
-                    # Setting requeue to True indicates that if an exception occurs within this
-                    # context manager, the message should be requeued. This is useful because it
-                    # allows requeueing of RabbitMQ messages that are not successfully sent over
-                    # the WebSocket connection. Usually this is because this async message handler
-                    # task has been cancelled externally, due to the WebSocket connection being
-                    # closed.
+                    # Setting requeue to True indicates that if an exception occurs
+                    # within this context manager, the message should be requeued. This
+                    # is useful because it allows requeueing of RabbitMQ messages that
+                    # are not successfully sent over the WebSocket connection. Usually
+                    # this is because this async message handler task has been cancelled
+                    # externally, due to the WebSocket connection being closed.
                     async with message.process(requeue=True):
                         await self.handle_mq_message(ws_conn, task_group_id, message)
 
@@ -383,7 +407,8 @@ class WebSocketServer:
         Returns
         -------
         asyncio.Task
-            async Task to process incoming task updates based on the sent WebSocket message
+            async Task to process incoming task updates based on the sent WebSocket
+            message
         """
         return self.loop.create_task(self.mq_receive_task(ws_conn, msg))
 
@@ -399,7 +424,7 @@ class WebSocketServer:
         path : str
             Path of request
         """
-        logger.debug('New WebSocket connection created')
+        logger.debug("New WebSocket connection created")
         ws_conn = WebSocketConnection(ws)
         check_idle_task = self.loop.create_task(ws_conn.check_idle())
         conn_tasks = [check_idle_task]
@@ -409,9 +434,9 @@ class WebSocketServer:
         # this will likely happen from the connected client not calling
         # ws.close() to have a clean closing handshake
         except Exception as e:
-            logger.debug(f'Connection closed with exception: {e}')
+            logger.debug(f"Connection closed with exception: {e}")
 
-        logger.info('WebSocket connection closed, cancelling message consumers')
+        logger.info("WebSocket connection closed, cancelling message consumers")
         for task in conn_tasks:
             task.cancel()
 
@@ -437,11 +462,8 @@ class WebSocketServer:
             and a simple HTTP response should be sent instead, either because the health
             check path was requested or because the user could not be authenticated
         """
-        if path == '/v2/health':
-            version_data = {
-                "version": VERSION,
-                "min_sdk_version": MIN_SDK_VERSION
-            }
+        if path == "/v2/health":
+            version_data = {"version": VERSION, "min_sdk_version": MIN_SDK_VERSION}
             json_str = json.dumps(version_data)
             res_str = f"{json_str}\n"
 

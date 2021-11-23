@@ -10,7 +10,6 @@ from funcx_common.redis import (
     RedisField,
 )
 from funcx_common.tasks import TaskProtocol, TaskState
-
 from redis import Redis
 
 

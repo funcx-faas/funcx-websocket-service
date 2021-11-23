@@ -24,19 +24,13 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        python -m pip install .
-        python -m pip install -r test-requirements.txt
-        pip list
+        python -m pip install tox
     - name: Check for vulnerabilities in libraries
-      run: |
-        pip install safety
-        pip freeze | safety check
-    - name: Lint with Flake8
-      run: |
-        flake8
-    - name: Test with pytest
-      run: |
-        pytest funcx_websocket_service/tests
+      run: tox -e safety
+    - name: Lint
+      run: tox -e lint
+    - name: Test
+      run: tox -e py
   publish:
     needs: test
     runs-on: ubuntu-latest

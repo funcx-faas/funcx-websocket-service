@@ -1,7 +1,0 @@
-aioredis>=2.0.0
-aiohttp
-websockets
-aio-pika
-python-json-logger
-funcx-common[redis,boto3]==0.0.9
-redis==3.5.3

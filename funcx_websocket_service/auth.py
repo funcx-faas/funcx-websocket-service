@@ -1,4 +1,5 @@
 import logging
+
 import aiohttp
 
 logger = logging.getLogger(__name__)
@@ -8,6 +9,7 @@ class AuthClient:
     """An auth client that authenticates users and authorizes them to receive
     task group updates by sending HTTP requests to the web service
     """
+
     def __init__(self, funcx_service_address: str):
         """Initialize auth client
 
@@ -37,14 +39,16 @@ class AuthClient:
             is needed
         """
         try:
-            auth_header = headers['Authorization']
+            auth_header = headers["Authorization"]
         except Exception:
-            return (401, [], b'You must be logged in to perform this function.\n')
-        req_headers = {'Authorization': auth_header}
+            return (401, [], b"You must be logged in to perform this function.\n")
+        req_headers = {"Authorization": auth_header}
 
-        async with self.session.get(self.full_path('/authenticate'), headers=req_headers) as r:
+        async with self.session.get(
+            self.full_path("/authenticate"), headers=req_headers
+        ) as r:
             if r.status != 200:
-                return (400, [], b'Failed to authenticate user.\n')
+                return (400, [], b"Failed to authenticate user.\n")
 
         return None
 
@@ -66,12 +70,14 @@ class AuthClient:
         Dict of task group data: if the user is authorized
         """
         try:
-            auth_header = headers['Authorization']
+            auth_header = headers["Authorization"]
         except Exception:
             return None
-        req_headers = {'Authorization': auth_header}
+        req_headers = {"Authorization": auth_header}
 
-        async with self.session.get(self.full_path(f'/task_groups/{task_group_id}'), headers=req_headers) as r:
+        async with self.session.get(
+            self.full_path(f"/task_groups/{task_group_id}"), headers=req_headers
+        ) as r:
             if r.status != 200:
                 return None
             return await r.json()
@@ -89,4 +95,4 @@ class AuthClient:
         str
             Full path for HTTP request
         """
-        return f'{self.funcx_service_address}{path}'
+        return f"{self.funcx_service_address}{path}"
