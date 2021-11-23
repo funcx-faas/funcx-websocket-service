@@ -50,7 +50,7 @@ class WebSocketConnection:
             # if no messages are sent to this connection in a 10 minute
             # time span, close the connection
             if now - self.last_send_time > self.idle_close_time:
-                logger.debug('Closing WebSocket connection for being idle too long')
+                logger.debug("Closing WebSocket connection for being idle too long")
                 await self.ws.close()
                 return
 
