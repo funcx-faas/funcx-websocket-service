@@ -37,12 +37,6 @@ def cli():
 
         WEB_SERVICE_URI = os.environ.get("WEB_SERVICE_URI")
 
-        FUNCX_S3_BUCKET_NAME = os.environ.get("FUNCX_S3_BUCKET_NAME")
-
-        FUNCX_REDIS_STORAGE_THRESHOLD = int(
-            os.environ.get("FUNCX_REDIS_STORAGE_THRESHOLD", 20000)
-        )
-
         if REDIS_HOST is None:
             REDIS_HOST = "127.0.0.1"
 
@@ -63,8 +57,6 @@ def cli():
             REDIS_PORT,
             RABBITMQ_URI,
             WEB_SERVICE_URI,
-            FUNCX_S3_BUCKET_NAME,
-            FUNCX_REDIS_STORAGE_THRESHOLD,
         )
     except Exception:
         logger.exception("Caught exception while starting server")

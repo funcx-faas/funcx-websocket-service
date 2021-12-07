@@ -14,7 +14,7 @@ REQUIRES = [
     "websockets",
     "aio-pika",
     "python-json-logger",
-    "funcx-common[redis,boto3]==0.0.9",
+    "funcx-common[redis,boto3]==0.0.10",
     "redis==3.5.3",
 ]
 
