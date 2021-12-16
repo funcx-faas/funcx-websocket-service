@@ -10,6 +10,7 @@ on:
 
 jobs:
   test:
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: [3.7]
@@ -32,6 +33,7 @@ jobs:
     - name: Test
       run: tox -e py
   publish:
+    timeout-minutes: 30
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -53,6 +55,7 @@ jobs:
 #  If this is a merge to main branch then we want to restart the web service
 #  pod on dev cluster to pick up the changes
   deploy:
+    timeout-minutes: 30
     needs: publish
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
