@@ -28,7 +28,7 @@ jobs:
     - name: Check for vulnerabilities in libraries
       run: tox -e safety
     - name: Lint
-      run: tox -e lint
+      run: tox -e lint,mypy
     - name: Test
       run: tox -e py
   publish:
