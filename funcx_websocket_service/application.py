@@ -35,6 +35,8 @@ def cli():
             rabbitmq_host = os.environ.get("FUNCX_RABBITMQ_SERVICE_HOST", "127.0.0.1")
             RABBITMQ_URI = f"amqp://funcx:rabbitmq@{rabbitmq_host}/"
 
+        RABBITMQ_QUEUE_TTL = os.environ.get("RABBITMQ_QUEUE_TTL")
+
         WEB_SERVICE_URI = os.environ.get("WEB_SERVICE_URI")
 
         if REDIS_HOST is None:
@@ -49,7 +51,8 @@ def cli():
         logger.info("Starting WebSocket Server")
         logger.debug(
             f"Using redis host: {REDIS_HOST}, redis port: {REDIS_PORT}, "
-            f"RabbitMQ uri: {RABBITMQ_URI}, web service URI: {WEB_SERVICE_URI}"
+            f"RabbitMQ uri: {RABBITMQ_URI}, web service URI: {WEB_SERVICE_URI}, "
+            f"RabbitMQ queue TTL: {RABBITMQ_QUEUE_TTL}"
         )
 
         WebSocketServer(
@@ -57,6 +60,7 @@ def cli():
             REDIS_PORT,
             RABBITMQ_URI,
             WEB_SERVICE_URI,
+            int(RABBITMQ_QUEUE_TTL),
         )
     except Exception:
         logger.exception("Caught exception while starting server")
