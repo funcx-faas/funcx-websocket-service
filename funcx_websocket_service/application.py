@@ -36,6 +36,8 @@ def cli():
             RABBITMQ_URI = f"amqp://funcx:rabbitmq@{rabbitmq_host}/"
 
         RABBITMQ_QUEUE_TTL = os.environ.get("RABBITMQ_QUEUE_TTL")
+        if not RABBITMQ_QUEUE_TTL:
+            RABBITMQ_QUEUE_TTL = 604800
 
         WEB_SERVICE_URI = os.environ.get("WEB_SERVICE_URI")
 
