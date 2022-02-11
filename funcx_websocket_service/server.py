@@ -34,6 +34,7 @@ class WebSocketServer:
         redis_port: str,
         rabbitmq_uri: str,
         web_service_uri: str,
+        rabbitmq_queue_ttl: int,
     ):
         """Initialize and run the server
 
@@ -51,16 +52,15 @@ class WebSocketServer:
         web_service_uri : str
             Web Service URI to use, likely an internal k8s DNS name
 
-        s3_bucket_name : str
-            Name of S3 bucket where results could be stored
-
-        redis_storage_threshold : int
-            Redis max storage threshold size for results
+        rabbitmq_queue_ttl : int
+            RabbitMQ queue TTL in seconds
+            (must match forwarder rabbitmq_queue_ttl)
         """
         self.redis_host = redis_host
         self.redis_port = redis_port
         self.rabbitmq_uri = rabbitmq_uri
         self.funcx_service_address = f"{web_service_uri}/v2"
+        self.rabbitmq_queue_ttl = rabbitmq_queue_ttl
         logger.info(f"funcx_service_address : {self.funcx_service_address}")
         self.auth_client = AuthClient(self.funcx_service_address)
 
@@ -359,11 +359,16 @@ class WebSocketServer:
         )
 
         async with mq_connection:
+            # This argument expects milliseconds, so multiply by 1000
+            queue_args = {
+                "x-expires": int(self.rabbitmq_queue_ttl * 1000),
+            }
+
             channel = await mq_connection.channel()
             exchange = await channel.declare_exchange(
                 "tasks", aio_pika.ExchangeType.DIRECT
             )
-            queue = await channel.declare_queue(task_group_id)
+            queue = await channel.declare_queue(task_group_id, arguments=queue_args)
             await queue.bind(exchange, routing_key=task_group_id)
 
             async with queue.iterator() as queue_iter:
